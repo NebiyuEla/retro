@@ -165,15 +165,6 @@
         speed: 0.5 + Math.random() * 0.8,
         layer: index % 2,
       }));
-      this.birds = Array.from({ length: 1 }, (_, index) => ({
-        x: 0,
-        y: 0,
-        size: 44 + Math.random() * 8,
-        speed: 28 + Math.random() * 18,
-        phase: Math.random() * Math.PI * 2,
-        slot: index,
-        ready: false,
-      }));
       this.player = {
         x: 0,
         y: 0,
@@ -201,9 +192,6 @@
         jump: this.createCharacterVideo("./Jump.mp4", false),
         dash: this.createCharacterVideo("./Dash.mp4", false, 0.34),
       };
-      this.birdSpriteImage = new Image();
-      this.birdSpriteImage.src = "./bird-sprite.png";
-      this.birdVideo = this.createCharacterVideo("./bird-flying.mp4", true);
       this.landmarkCanvas = document.createElement("canvas");
       this.landmarkCanvas.width = 1;
       this.landmarkCanvas.height = 1;
@@ -217,10 +205,6 @@
       this.frameCanvas.width = 1;
       this.frameCanvas.height = 1;
       this.frameContext = this.frameCanvas.getContext("2d", { willReadFrequently: true });
-      this.birdFrameCanvas = document.createElement("canvas");
-      this.birdFrameCanvas.width = 1;
-      this.birdFrameCanvas.height = 1;
-      this.birdFrameContext = this.birdFrameCanvas.getContext("2d", { willReadFrequently: true });
       this.groundImage.addEventListener("load", () => {
         this.buildLandmarkCache();
         this.buildBackgroundCache();
@@ -387,15 +371,6 @@
       this.player.h = this.width < 560 ? 96 : 112;
       this.player.x = this.width * (this.width < 680 ? 0.27 : 0.22);
       if (this.player.grounded || this.state !== "running") this.player.y = this.groundY - this.player.h;
-      for (const bird of this.birds) {
-        if (!bird.ready) {
-          bird.x = this.width * (0.28 + bird.slot * 0.18) + Math.random() * 90;
-          bird.ready = true;
-        } else {
-          bird.x = clamp(bird.x, -80, this.width + 260);
-        }
-        bird.y = this.height * (0.31 + (bird.slot % 3) * 0.045 + Math.random() * 0.045);
-      }
       this.backgroundCacheKey = "";
       this.buildBackgroundCache();
     }
@@ -523,13 +498,6 @@
       ui.gameover.classList.remove("is-visible");
       ui.location.textContent = locations[0].label;
       this.playCharacterVideo("run", true);
-      try {
-        if (this.birdVideo?.readyState >= 1) this.birdVideo.currentTime = 1.8;
-      } catch {
-        // The bird video may still be decoding on the first frame.
-      }
-      const birdPlayback = this.birdVideo?.play();
-      if (birdPlayback?.catch) birdPlayback.catch(() => {});
       sound.start();
     }
 
@@ -636,7 +604,6 @@
         this.player.duckTime = Math.max(this.player.duckTime, 0.18);
       }
       this.player.coyote = this.player.grounded ? 0.1 : Math.max(0, this.player.coyote - dt);
-      this.updateBirds(dt, worldSpeed);
       const dashVideo = this.characterVideos.dash;
       if (this.player.duckTime > 0 && this.player.grounded && dashVideo?.readyState >= 2) {
         this.holdDashPose();
@@ -763,19 +730,6 @@
       }
     }
 
-    updateBirds(dt, worldSpeed) {
-      for (const bird of this.birds) {
-        bird.x -= (bird.speed + worldSpeed * 0.18) * dt;
-        bird.phase += dt * 8;
-        if (bird.x < -80) {
-          bird.x = this.width + 140 + Math.random() * 120;
-          bird.y = this.height * (0.31 + Math.random() * 0.1);
-          bird.size = 44 + Math.random() * 8;
-          bird.speed = 28 + Math.random() * 18;
-        }
-      }
-    }
-
     makeDust(x, y, count) {
       for (let i = 0; i < count; i += 1) {
         this.particles.push({
@@ -831,7 +785,6 @@
       ctx.imageSmoothingEnabled = false;
       this.drawBackground();
       this.drawKaiju();
-      this.drawBirds();
       this.drawRoad();
       for (const obstacle of this.obstacles) this.drawObstacle(obstacle);
       this.drawPlayer();
@@ -972,23 +925,6 @@
         }
         ctx.globalAlpha = 1;
       }
-    }
-
-    drawBirds() {
-      const image = this.birdSpriteImage;
-      if (!image?.complete || !image.naturalWidth || !image.naturalHeight) return;
-      ctx.save();
-      for (const bird of this.birds) {
-        const drawH = bird.size;
-        const drawW = drawH * image.naturalWidth / image.naturalHeight;
-        const bob = Math.sin(bird.phase) * 3;
-        ctx.save();
-        ctx.translate(bird.x + drawW, bird.y + bob);
-        ctx.scale(-1, 1);
-        ctx.drawImage(image, 0, 0, drawW, drawH);
-        ctx.restore();
-      }
-      ctx.restore();
     }
 
     drawCompanion() {
@@ -1699,11 +1635,6 @@
         background: {
           imageLoaded: Boolean(this.groundImage.naturalWidth),
           ready: this.backgroundReady,
-        },
-        birdVideo: {
-          readyState: this.birdVideo?.readyState || 0,
-          width: this.birdVideo?.videoWidth || 0,
-          height: this.birdVideo?.videoHeight || 0,
         },
       };
     }

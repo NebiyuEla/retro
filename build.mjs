@@ -7,8 +7,6 @@ const files = [
   "Run.mp4",
   "Jump.mp4",
   "Dash.mp4",
-  "bird-flying.mp4",
-  "bird-sprite.png",
   "1.png",
   "2.png",
   "3.png",
