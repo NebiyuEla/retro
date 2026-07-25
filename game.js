@@ -154,6 +154,7 @@
       this.scroll = 0;
       this.spawnTimer = 1.35;
       this.locationIndex = 0;
+      this.slideHeld = false;
       this.obstacles = [];
       this.particles = [];
       this.speedLines = [];
@@ -240,14 +241,10 @@
       if (!video) return;
       if (restart) {
         try {
-          video.currentTime = name === "dash" ? 0.32 : 0;
+          video.currentTime = name === "dash" ? 0.28 : 0;
         } catch {
           // The first decoded frame remains a safe fallback while metadata loads.
         }
-      }
-      if (name === "dash") {
-        video.pause();
-        return;
       }
       const playback = video.play();
       if (playback?.catch) playback.catch(() => {});
@@ -365,7 +362,16 @@
           return;
         }
         if (event.code === "Space" || event.code === "ArrowUp" || event.code === "KeyW") this.queueJump();
-        if (event.code === "ShiftLeft" || event.code === "ShiftRight" || event.code === "ArrowDown" || event.code === "KeyD") this.dash();
+        if (event.code === "ShiftLeft" || event.code === "ShiftRight" || event.code === "ArrowDown" || event.code === "KeyD") {
+          this.slideHeld = true;
+          this.dash();
+        }
+      });
+
+      window.addEventListener("keyup", (event) => {
+        if (event.code === "ShiftLeft" || event.code === "ShiftRight" || event.code === "ArrowDown" || event.code === "KeyD") {
+          this.slideHeld = false;
+        }
       });
 
       const press = (element, action) => {
@@ -375,7 +381,18 @@
         });
       };
       press($("#jumpButton"), () => this.queueJump());
-      press($("#dashButton"), () => this.dash());
+      const dashButton = $("#dashButton");
+      dashButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        this.slideHeld = true;
+        this.dash();
+      });
+      dashButton.addEventListener("pointerup", () => {
+        this.slideHeld = false;
+      });
+      dashButton.addEventListener("pointercancel", () => {
+        this.slideHeld = false;
+      });
       canvas.addEventListener("pointerdown", (event) => {
         if (this.state === "running" && event.pointerType !== "mouse") this.queueJump();
       });
@@ -389,9 +406,9 @@
 
     dash() {
       if (this.state !== "running" || this.player.dashCooldown > 0) return;
-      this.player.dashTime = 0.92;
-      this.player.dashCooldown = 1.15;
-      this.player.duckTime = this.player.grounded ? 0.92 : 0;
+      this.player.dashTime = 1.16;
+      this.player.dashCooldown = 1.08;
+      this.player.duckTime = this.player.grounded ? 1.16 : 0;
       this.playCharacterVideo("dash", true);
       sound.dash();
       for (let i = 0; i < 10; i += 1) {
@@ -417,6 +434,7 @@
       this.obstacles.length = 0;
       this.particles.length = 0;
       this.locationIndex = 0;
+      this.slideHeld = false;
       this.player.y = this.groundY - this.player.h;
       this.player.vy = 0;
       this.player.grounded = true;
@@ -478,11 +496,11 @@
       const requestedType = forcedType === "spike" ? "blockade" : forcedType;
       const type = requestedType || pool[Math.floor(Math.random() * pool.length)];
       const config = {
-        rubble: { w: 74, h: 42, breakable: false },
-        barrier: { w: 62, h: 66, breakable: false },
-        blockade: { w: 72, h: 70, breakable: false },
-        crate: { w: 62, h: 58, breakable: true },
-        overhead: { w: 136, h: 58, breakable: false, overhead: true },
+        rubble: { w: 88, h: 50, breakable: false },
+        barrier: { w: 82, h: 74, breakable: false },
+        blockade: { w: 96, h: 72, breakable: false },
+        crate: { w: 74, h: 64, breakable: true },
+        overhead: { w: 146, h: 60, breakable: false, overhead: true },
       }[type];
       const mobileScale = this.width < 560 ? 0.88 : 1;
       const width = config.w * mobileScale;
@@ -490,7 +508,7 @@
       this.obstacles.push({
         type,
         x: this.width + 70,
-        y: config.overhead ? this.groundY - this.player.h * 1.28 : this.groundY - height,
+        y: config.overhead ? this.groundY - this.player.h * 1.42 : this.groundY - height,
         w: width,
         h: height,
         breakable: config.breakable,
@@ -513,23 +531,42 @@
       this.distance += worldSpeed * dt * 0.075;
 
       this.player.jumpBuffer = Math.max(0, this.player.jumpBuffer - dt);
+      const wasDashing = this.player.dashTime > 0;
       this.player.dashTime = Math.max(0, this.player.dashTime - dt);
       this.player.dashCooldown = Math.max(0, this.player.dashCooldown - dt);
       this.player.duckTime = this.player.grounded ? Math.max(0, this.player.duckTime - dt) : 0;
+      if (this.slideHeld && this.player.grounded) {
+        this.player.dashTime = Math.max(this.player.dashTime, 0.18);
+        this.player.duckTime = Math.max(this.player.duckTime, 0.18);
+      }
       this.player.coyote = this.player.grounded ? 0.1 : Math.max(0, this.player.coyote - dt);
       this.updateBirds(dt, worldSpeed);
+      const dashVideo = this.characterVideos.dash;
+      if (this.player.dashTime > 0 && dashVideo?.readyState >= 2) {
+        try {
+          if (dashVideo.currentTime < 0.26 || dashVideo.currentTime > 0.52 || dashVideo.ended) {
+            dashVideo.currentTime = 0.30;
+            const playback = dashVideo.play();
+            if (playback?.catch) playback.catch(() => {});
+          }
+        } catch {
+          // Keep the last usable dash frame while the browser seeks.
+        }
+      } else if (wasDashing && this.player.grounded) {
+        this.playCharacterVideo("run", true);
+      }
 
       if (this.player.jumpBuffer > 0 && this.player.coyote > 0) {
         this.player.jumpBuffer = 0;
         this.player.coyote = 0;
         this.player.grounded = false;
-        this.player.vy = -Math.max(705, this.height * 0.98);
+        this.player.vy = -Math.max(610, this.height * 0.84);
         this.playCharacterVideo("jump", true);
         sound.jump();
         this.makeDust(this.player.x + 20, this.groundY - 3, 8);
       }
 
-      const gravity = Math.max(1900, this.height * 2.65);
+      const gravity = Math.max(2250, this.height * 3.05);
       this.player.vy += gravity * dt;
       this.player.y += this.player.vy * dt;
       const floor = this.groundY - this.player.h;
@@ -561,16 +598,16 @@
       const ducking = this.player.duckTime > 0 && this.player.grounded;
       const playerBox = ducking
         ? {
-            x: this.player.x + this.player.w * 0.16,
-            y: this.groundY - this.player.h * 0.38,
-            w: this.player.w * 0.66,
-            h: this.player.h * 0.27,
+            x: this.player.x - this.player.w * 0.16,
+            y: this.groundY - this.player.h * 0.43,
+            w: this.player.w * 1.55,
+            h: this.player.h * 0.34,
           }
         : {
-            x: this.player.x + (this.player.dashTime > 0 ? 8 : this.player.w * 0.3),
-            y: this.player.y + (this.player.dashTime > 0 ? 31 : 14),
-            w: this.player.dashTime > 0 ? this.player.w - 16 : this.player.w * 0.4,
-            h: this.player.h - (this.player.dashTime > 0 ? 34 : 28),
+            x: this.player.x + this.player.w * 0.12,
+            y: this.player.y + this.player.h * 0.07,
+            w: this.player.w * 1.34,
+            h: this.player.h * 0.91,
           };
 
       for (let index = this.obstacles.length - 1; index >= 0; index -= 1) {
@@ -579,8 +616,8 @@
           this.obstacles.splice(index, 1);
           continue;
         }
-        const obstacleLeft = obstacle.x + 7;
-        const obstacleRight = obstacle.x + obstacle.w - 7;
+        const obstacleLeft = obstacle.x + 1;
+        const obstacleRight = obstacle.x + obstacle.w - 1;
         const horizontalOverlap = playerBox.x < obstacleRight && playerBox.x + playerBox.w > obstacleLeft;
         if (obstacle.overhead) {
           if (horizontalOverlap && !ducking) {
@@ -591,9 +628,9 @@
         }
         const obstacleBox = {
           x: obstacleLeft,
-          y: obstacle.y + 5,
-          w: obstacle.w - 14,
-          h: obstacle.h - 5,
+          y: obstacle.y - 1,
+          w: obstacle.w - 2,
+          h: obstacle.h + 1,
         };
         const collides =
           playerBox.x < obstacleBox.x + obstacleBox.w &&
@@ -871,18 +908,8 @@
       ctx.save();
       ctx.translate(this.player.x, this.groundY + jumpLift);
       const fallbackVideo = this.characterVideos.run;
-      if (motion === "dash" && video?.readyState >= 2) {
-        try {
-          if (Math.abs(video.currentTime - 0.32) > 0.05) video.currentTime = 0.32;
-          video.pause();
-        } catch {
-          // Keep the last decoded slide frame if the browser is already seeking.
-        }
-      }
       if (video?.readyState >= 2 || fallbackVideo?.readyState >= 2) {
         this.drawVideoCharacter(video?.readyState >= 2 ? video : fallbackVideo, video?.readyState >= 2 ? motion : "run");
-      } else {
-        this.drawSketchRunner(motion);
       }
       ctx.restore();
     }
@@ -890,9 +917,9 @@
     drawVideoCharacter(video, motion) {
       const mobileScale = this.width < 560 ? 0.9 : 1;
       const config = {
-        run: { x: -54, y: -234, height: 245, source: [58, 6, 178, 170], highSource: [250, 35, 560, 640] },
-        jump: { x: -48, y: -268, height: 286, source: [62, 0, 145, 180], highSource: [300, 0, 700, 980] },
-        dash: { x: -72, y: -151, height: 154, source: [32, 30, 205, 148], highSource: [230, 220, 620, 430] },
+        run: { x: -48, y: -211, height: 222, source: [58, 6, 178, 170], highSource: [250, 35, 560, 640] },
+        jump: { x: -44, y: -240, height: 256, source: [62, 0, 145, 180], highSource: [300, 0, 700, 980] },
+        dash: { x: -64, y: -136, height: 138, source: [32, 30, 205, 148], highSource: [230, 230, 600, 390] },
       }[motion];
       const source = video.videoWidth > 500 && config.highSource ? config.highSource : config.source;
       const sourceAspect = source ? source[2] / source[3] : (video.videoWidth || 1) / (video.videoHeight || 1);
@@ -1332,80 +1359,83 @@
 
       if (obstacle.type === "rubble") {
         ctx.fillStyle = "#111";
-        ctx.fillRect(3, h - 12, w - 3, 12);
-        poly([[2, h - 8], [10, h - 28], [30, h - 34], [43, h - 20], [36, h - 5]], "#5d5d5d");
-        poly([[25, h - 6], [34, h - 39], [56, h - 34], [w - 4, h - 16], [w - 18, h - 5]], "#7b7b7b");
-        poly([[8, h - 3], [17, h - 22], [37, h - 20], [50, h - 7]], "#333");
-        sketchLine(12, h - 25, 27, h - 30, 0.55);
-        sketchLine(39, h - 34, 55, h - 28, 0.45);
+        ctx.fillRect(0, h - 12, w, 12);
+        poly([[4, h - 11], [16, h - 34], [34, h - 40], [50, h - 23], [42, h - 6]], "#4c4c4c", "#111", 3);
+        poly([[31, h - 8], [42, h - 43], [66, h - 38], [w - 3, h - 19], [w - 18, h - 5]], "#777", "#111", 3);
+        poly([[11, h - 4], [22, h - 26], [42, h - 24], [58, h - 7]], "#2d2d2d", "#111", 2.5);
+        ctx.strokeStyle = "#ededed";
+        ctx.lineWidth = 2;
+        sketchLine(14, h - 29, 31, h - 35, 0.5);
+        sketchLine(45, h - 38, 64, h - 31, 0.45);
+        sketchLine(w - 31, h - 24, w - 14, h - 18, 0.35);
       } else if (obstacle.type === "barrier") {
-        ctx.strokeStyle = "#111";
-        ctx.lineWidth = 4;
-        ctx.strokeRect(4, 8, w - 8, h - 16);
-        ctx.fillStyle = "#ededed";
-        ctx.fillRect(9, 15, w - 18, h - 30);
-        ctx.fillStyle = "#2e2e2e";
-        for (let x = 10; x < w - 8; x += 19) {
+        poly([[5, 18], [w - 8, 10], [w - 2, h - 15], [1, h - 6]], "#111", "#111", 2);
+        poly([[11, 23], [w - 15, 17], [w - 12, h - 24], [9, h - 17]], "#dcdcdc", "#111", 3);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(11, 23);
+        ctx.lineTo(w - 15, 17);
+        ctx.lineTo(w - 12, h - 24);
+        ctx.lineTo(9, h - 17);
+        ctx.closePath();
+        ctx.clip();
+        ctx.fillStyle = "#2c2c2c";
+        for (let x = -8; x < w + 18; x += 22) {
           ctx.beginPath();
-          ctx.moveTo(x, 15);
-          ctx.lineTo(x + 10, 15);
-          ctx.lineTo(x - 4, h - 15);
-          ctx.lineTo(x - 14, h - 15);
+          ctx.moveTo(x, 17);
+          ctx.lineTo(x + 10, 17);
+          ctx.lineTo(x - 7, h - 14);
+          ctx.lineTo(x - 18, h - 14);
           ctx.fill();
         }
-        ctx.fillStyle = "#151515";
-        ctx.fillRect(0, h - 13, w, 9);
-        ctx.fillRect(8, h - 6, 8, 8);
-        ctx.fillRect(w - 16, h - 6, 8, 8);
-        ctx.fillStyle = Math.sin(this.elapsed * 8 + obstacle.seed) > 0 ? "#f2f2f2" : "#777";
-        ctx.fillRect(w / 2 - 4, 2, 8, 8);
+        ctx.restore();
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, h - 14, w, 10);
+        ctx.fillRect(7, h - 6, 13, 8);
+        ctx.fillRect(w - 22, h - 6, 13, 8);
+        ctx.fillStyle = Math.sin(this.elapsed * 8 + obstacle.seed) > 0 ? "#f2f2f2" : "#888";
+        ctx.fillRect(w / 2 - 5, 5, 10, 8);
       } else if (obstacle.type === "blockade") {
-        ctx.fillStyle = "#111";
-        ctx.fillRect(2, 18, w - 4, h - 22);
-        ctx.fillStyle = "#707070";
-        ctx.fillRect(8, 23, w - 16, h - 32);
-        ctx.fillStyle = "#9b9b9b";
-        ctx.fillRect(12, 27, w - 24, 11);
-        ctx.fillStyle = "#3a3a3a";
-        ctx.fillRect(12, h - 33, w - 24, 10);
-        ctx.fillStyle = "#151515";
-        ctx.fillRect(15, 42, w - 30, h - 76);
+        poly([[4, 20], [w - 5, 15], [w - 1, h - 12], [1, h - 6]], "#101010", "#111", 2);
+        poly([[10, 25], [w - 14, 22], [w - 13, h - 24], [9, h - 18]], "#6f6f6f", "#111", 3);
+        ctx.fillStyle = "#2f2f2f";
+        ctx.fillRect(15, 34, w - 30, h - 58);
+        ctx.fillStyle = "#bdbdbd";
+        ctx.fillRect(16, 28, w - 34, 7);
+        ctx.fillRect(16, h - 31, w - 34, 6);
         ctx.fillStyle = "#ededed";
-        ctx.fillRect(18, 30, w - 36, 4);
-        ctx.fillRect(18, h - 29, w - 36, 4);
+        ctx.fillRect(22, 43, w - 44, 3);
+        ctx.fillRect(25, 51, w - 50, 3);
         ctx.fillStyle = "#111";
-        ctx.fillRect(0, h - 11, w, 9);
-        ctx.fillRect(10, h - 5, 10, 7);
-        ctx.fillRect(w - 20, h - 5, 10, 7);
-        sketchLine(13, 39, w - 13, 39, 0.45);
-        sketchLine(14, h - 40, w - 14, h - 40, 0.35);
+        ctx.fillRect(0, h - 13, w, 10);
+        ctx.fillRect(10, h - 6, 12, 8);
+        ctx.fillRect(w - 22, h - 6, 12, 8);
+        sketchLine(16, 39, w - 16, 36, 0.42);
+        sketchLine(18, h - 40, w - 18, h - 42, 0.32);
       } else if (obstacle.type === "overhead") {
         const flicker = Math.sin(this.elapsed * 10 + obstacle.seed) > 0;
+        poly([[0, 4], [w - 6, 0], [w, 18], [7, 22]], "#111", "#111", 2);
+        poly([[8, 19], [w - 12, 15], [w - 18, h - 7], [2, h - 3]], "#3a3a3a", "#111", 3);
+        ctx.fillStyle = flicker ? "#ededed" : "#bdbdbd";
+        ctx.fillRect(20, 25, w - 48, 7);
         ctx.fillStyle = "#111";
-        ctx.fillRect(0, 0, w, 11);
-        ctx.fillRect(0, h - 13, w, 13);
-        ctx.fillRect(0, 5, 9, h - 8);
-        ctx.fillRect(w - 9, 5, 9, h - 8);
-        ctx.strokeStyle = "#f2f2f2";
-        ctx.globalAlpha = 0.34;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(17, 16);
-        ctx.lineTo(17, h - 16);
-        ctx.moveTo(w - 17, 16);
-        ctx.lineTo(w - 17, h - 16);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = flicker ? "#f2f2f2" : "#bdbdbd";
-        ctx.fillRect(18, 18, w - 36, 7);
-        ctx.fillRect(27, 32, w - 54, 5);
-        ctx.fillStyle = "#111";
-        for (let x = 22; x < w - 18; x += 18) {
-          poly([[x, h - 13], [x + 8, h - 1], [x + 16, h - 13]], "#111", "#111", 1);
+        ctx.fillRect(13, 25, 7, h - 27);
+        ctx.fillRect(w - 23, 22, 7, h - 27);
+        ctx.fillStyle = "#dcdcdc";
+        for (let x = 29; x < w - 32; x += 25) {
+          ctx.beginPath();
+          ctx.moveTo(x, 27);
+          ctx.lineTo(x + 9, 27);
+          ctx.lineTo(x - 9, h - 8);
+          ctx.lineTo(x - 18, h - 8);
+          ctx.fill();
         }
-        ctx.fillStyle = "#f2f2f2";
-        ctx.fillRect(7, 3, 12, 4);
-        ctx.fillRect(w - 19, h - 7, 12, 4);
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, h - 10, w - 16, 9);
+        ctx.fillRect(w - 31, h - 14, 24, 10);
+        ctx.fillStyle = "#ededed";
+        ctx.fillRect(8, 8, 13, 4);
+        ctx.fillRect(w - 26, 5, 13, 4);
       } else {
         ctx.fillStyle = "#111";
         ctx.fillRect(0, 0, w, h);
@@ -1632,6 +1662,34 @@
     restart: () => game.restart(),
     clearObstacles: () => {
       game.obstacles.length = 0;
+    },
+    placeObstacle: (type, offset = 126) => {
+      game.obstacles.length = 0;
+      game.player.dashCooldown = 0;
+      game.player.dashTime = 0;
+      game.player.duckTime = 0;
+      game.player.y = game.groundY - game.player.h;
+      game.player.vy = 0;
+      game.player.grounded = true;
+      const configs = {
+        rubble: { w: 88, h: 50, breakable: false },
+        barrier: { w: 82, h: 74, breakable: false },
+        blockade: { w: 96, h: 72, breakable: false },
+        crate: { w: 74, h: 64, breakable: true },
+        overhead: { w: 146, h: 60, breakable: false, overhead: true },
+      };
+      const config = configs[type] || configs.rubble;
+      game.obstacles.push({
+        type,
+        x: game.player.x + offset,
+        y: config.overhead ? game.groundY - game.player.h * 1.42 : game.groundY - config.h,
+        w: config.w,
+        h: config.h,
+        breakable: config.breakable,
+        overhead: Boolean(config.overhead),
+        passed: false,
+        seed: 1,
+      });
     },
     holdSpawns: (seconds = 6) => {
       game.spawnTimer = seconds;
