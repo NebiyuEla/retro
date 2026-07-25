@@ -168,7 +168,7 @@
       this.birds = Array.from({ length: 7 }, (_, index) => ({
         x: 0,
         y: 0,
-        size: 10 + Math.random() * 8,
+        size: 24 + Math.random() * 16,
         speed: 34 + Math.random() * 28,
         phase: Math.random() * Math.PI * 2,
         slot: index,
@@ -201,6 +201,7 @@
         jump: this.createCharacterVideo("./Jump.mp4", false),
         dash: this.createCharacterVideo("./Dash.mp4", false, 0.34),
       };
+      this.birdVideo = this.createCharacterVideo("./bird-flying.mp4", true);
       this.landmarkCanvas = document.createElement("canvas");
       this.landmarkCanvas.width = 1;
       this.landmarkCanvas.height = 1;
@@ -214,6 +215,10 @@
       this.frameCanvas.width = 1;
       this.frameCanvas.height = 1;
       this.frameContext = this.frameCanvas.getContext("2d", { willReadFrequently: true });
+      this.birdFrameCanvas = document.createElement("canvas");
+      this.birdFrameCanvas.width = 1;
+      this.birdFrameCanvas.height = 1;
+      this.birdFrameContext = this.birdFrameCanvas.getContext("2d", { willReadFrequently: true });
       this.groundImage.addEventListener("load", () => {
         this.buildLandmarkCache();
         this.buildBackgroundCache();
@@ -431,7 +436,7 @@
       this.player.coyote = 0;
       this.player.duckTime = 0;
       this.player.grounded = false;
-      this.player.vy = -Math.max(610, this.height * 0.84);
+      this.player.vy = -Math.max(720, this.height * 0.84);
       this.playCharacterVideo("jump", true);
       sound.jump();
       this.makeDust(this.player.x + 20, this.groundY - 3, 8);
@@ -486,6 +491,8 @@
       ui.gameover.classList.remove("is-visible");
       ui.location.textContent = locations[0].label;
       this.playCharacterVideo("run", true);
+      const birdPlayback = this.birdVideo?.play();
+      if (birdPlayback?.catch) birdPlayback.catch(() => {});
       sound.start();
     }
 
@@ -612,7 +619,7 @@
         this.performJump();
       }
 
-      const gravity = Math.max(2250, this.height * 3.05);
+      const gravity = Math.max(1350, this.height * 1.6);
       this.player.vy += gravity * dt;
       this.player.y += this.player.vy * dt;
       const floor = this.groundY - this.player.h;
@@ -642,6 +649,7 @@
       }
 
       const ducking = this.player.duckTime > 0 && this.player.grounded;
+      const airborne = !this.player.grounded;
       const playerBox = ducking
         ? {
             x: this.player.x - this.player.w * 0.04,
@@ -649,7 +657,14 @@
             w: this.player.w * 1.2,
             h: this.player.h * 0.3,
           }
-        : {
+        : airborne
+          ? {
+              x: this.player.x + this.player.w * 0.32,
+              y: this.player.y + this.player.h * 0.13,
+              w: this.player.w * 0.62,
+              h: this.player.h * 0.54,
+            }
+          : {
             x: this.player.x + this.player.w * 0.2,
             y: this.player.y + this.player.h * 0.08,
             w: this.player.w * 0.92,
@@ -675,9 +690,9 @@
         }
         const obstacleBox = {
           x: obstacleLeft,
-          y: obstacle.y + 8,
+          y: obstacle.y + 13,
           w: Math.max(8, obstacle.w - horizontalInset * 2),
-          h: Math.max(8, obstacle.h - 10),
+          h: Math.max(8, obstacle.h - 18),
         };
         const collides =
           playerBox.x < obstacleBox.x + obstacleBox.w &&
@@ -715,7 +730,7 @@
         if (bird.x < -80) {
           bird.x = this.width + 90 + Math.random() * 220;
           bird.y = this.height * (0.33 + Math.random() * 0.18);
-          bird.size = 10 + Math.random() * 8;
+          bird.size = 24 + Math.random() * 16;
           bird.speed = 34 + Math.random() * 28;
         }
       }
@@ -920,18 +935,76 @@
     }
 
     drawBirds() {
+      const video = this.birdVideo;
+      if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
+
+      const frameWidth = 180;
+      const frameHeight = Math.max(1, Math.round(frameWidth * video.videoHeight / video.videoWidth));
+      if (this.birdFrameCanvas.width !== frameWidth || this.birdFrameCanvas.height !== frameHeight) {
+        this.birdFrameCanvas.width = frameWidth;
+        this.birdFrameCanvas.height = frameHeight;
+      }
+
+      const birdContext = this.birdFrameContext;
+      birdContext.setTransform(1, 0, 0, 1, 0, 0);
+      birdContext.clearRect(0, 0, frameWidth, frameHeight);
+      birdContext.imageSmoothingEnabled = true;
+      birdContext.drawImage(video, 0, 0, frameWidth, frameHeight);
+      const frame = birdContext.getImageData(0, 0, frameWidth, frameHeight);
+      const data = frame.data;
+      let left = frameWidth;
+      let top = frameHeight;
+      let right = 0;
+      let bottom = 0;
+      for (let index = 0; index < data.length; index += 4) {
+        const red = data[index];
+        const green = data[index + 1];
+        const blue = data[index + 2];
+        const value = (red + green + blue) / 3;
+        const strongestNonGreen = Math.max(red, blue);
+        const isGreenScreen =
+          green > 55 &&
+          green - strongestNonGreen > 14 &&
+          green > red * 1.05 &&
+          green > blue * 1.05;
+        if (isGreenScreen || value > 246) {
+          data[index + 3] = 0;
+          continue;
+        }
+        const ink = clamp(value * 1.02, 0, 255);
+        data[index] = ink;
+        data[index + 1] = ink;
+        data[index + 2] = ink;
+        data[index + 3] = 220;
+        const pixel = index / 4;
+        const x = pixel % frameWidth;
+        const y = Math.floor(pixel / frameWidth);
+        if (x < left) left = x;
+        if (x > right) right = x;
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+      }
+      if (right <= left || bottom <= top) return;
+      birdContext.putImageData(frame, 0, 0);
+
+      const sourceW = right - left + 1;
+      const sourceH = bottom - top + 1;
       ctx.save();
-      ctx.strokeStyle = "rgba(16,16,16,.78)";
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
       for (const bird of this.birds) {
-        const flap = Math.sin(bird.phase) * bird.size * 0.35;
-        ctx.beginPath();
-        ctx.moveTo(bird.x, bird.y);
-        ctx.quadraticCurveTo(bird.x + bird.size * 0.55, bird.y - bird.size * 0.35 - flap, bird.x + bird.size, bird.y);
-        ctx.moveTo(bird.x + bird.size, bird.y);
-        ctx.quadraticCurveTo(bird.x + bird.size * 1.45, bird.y - bird.size * 0.35 + flap, bird.x + bird.size * 2, bird.y);
-        ctx.stroke();
+        const drawH = bird.size;
+        const drawW = drawH * sourceW / sourceH;
+        const bob = Math.sin(bird.phase) * 3;
+        ctx.drawImage(
+          this.birdFrameCanvas,
+          left,
+          top,
+          sourceW,
+          sourceH,
+          bird.x,
+          bird.y + bob,
+          drawW,
+          drawH,
+        );
       }
       ctx.restore();
     }
@@ -1642,6 +1715,11 @@
         background: {
           imageLoaded: Boolean(this.groundImage.naturalWidth),
           ready: this.backgroundReady,
+        },
+        birdVideo: {
+          readyState: this.birdVideo?.readyState || 0,
+          width: this.birdVideo?.videoWidth || 0,
+          height: this.birdVideo?.videoHeight || 0,
         },
       };
     }
