@@ -885,9 +885,9 @@
     drawVideoCharacter(video, motion) {
       const mobileScale = this.width < 560 ? 0.9 : 1;
       const config = {
-        run: { x: -29, y: -159, width: 160, height: 171, source: [58, 6, 178, 170], threshold: 8 },
-        jump: { x: -23, y: -181, width: 139, height: 184, source: [62, 0, 145, 180], threshold: 8 },
-        dash: { x: -43, y: -133, width: 194, height: 140, source: [32, 30, 205, 148], threshold: 8 },
+        run: { x: -58, y: -198, width: 235, height: 225, source: [58, 6, 178, 170] },
+        jump: { x: -48, y: -224, width: 188, height: 235, source: [62, 0, 145, 180] },
+        dash: { x: -70, y: -146, width: 250, height: 170, source: [32, 30, 205, 148] },
       }[motion];
       const x = config.x * mobileScale;
       const y = config.y * mobileScale;
@@ -910,7 +910,6 @@
         const frameHeight = this.frameCanvas.height;
         const frame = frameContext.getImageData(0, 0, frameWidth, frameHeight);
         const data = frame.data;
-        const threshold = config.threshold;
         for (let index = 0; index < data.length; index += 4) {
           const red = data[index];
           const green = data[index + 1];
@@ -918,12 +917,12 @@
           const value = (red + green + blue) / 3;
           const strongestNonGreen = Math.max(red, blue);
           const isGreenScreen =
-            green > 48 &&
-            green - strongestNonGreen > 18 &&
-            green > red * 1.12 &&
-            green > blue * 1.12;
-          if (!isGreenScreen && value > threshold) {
-            const ink = clamp(value * 1.42 + 12, 0, 255);
+            green > 40 &&
+            green - strongestNonGreen > 10 &&
+            green > red * 1.04 &&
+            green > blue * 1.04;
+          if (!isGreenScreen) {
+            const ink = clamp(value * 1.04, 0, 255);
             data[index] = ink;
             data[index + 1] = ink;
             data[index + 2] = ink;
@@ -935,11 +934,11 @@
         frameContext.putImageData(frame, 0, 0);
         ctx.save();
         ctx.filter = "brightness(0)";
-        ctx.globalAlpha = 0.95;
-        ctx.drawImage(this.frameCanvas, drawX - 2, drawY, width, height);
-        ctx.drawImage(this.frameCanvas, drawX + 2, drawY, width, height);
-        ctx.drawImage(this.frameCanvas, drawX, drawY - 2, width, height);
-        ctx.drawImage(this.frameCanvas, drawX, drawY + 2, width, height);
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(this.frameCanvas, drawX - 1, drawY, width, height);
+        ctx.drawImage(this.frameCanvas, drawX + 1, drawY, width, height);
+        ctx.drawImage(this.frameCanvas, drawX, drawY - 1, width, height);
+        ctx.drawImage(this.frameCanvas, drawX, drawY + 1, width, height);
         ctx.filter = "none";
         ctx.globalAlpha = 1;
         ctx.drawImage(this.frameCanvas, drawX, drawY, width, height);
