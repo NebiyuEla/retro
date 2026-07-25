@@ -328,6 +328,12 @@
       this.backgroundReady = true;
     }
 
+    ensureBackgroundReady() {
+      if (!this.groundImage.naturalWidth) return;
+      if (!this.landmarkReady) this.buildLandmarkCache();
+      if (!this.backgroundReady) this.buildBackgroundCache();
+    }
+
     resize() {
       const bounds = stage.getBoundingClientRect();
       this.width = Math.max(320, bounds.width);
@@ -473,6 +479,7 @@
       this.player.dashTime = 0;
       this.player.dashCooldown = 0;
       this.player.duckTime = 0;
+      this.ensureBackgroundReady();
       ui.hud.classList.add("is-visible");
       ui.pause.classList.remove("is-visible");
       ui.gameover.classList.remove("is-visible");
@@ -767,6 +774,7 @@
     drawBackground() {
       ctx.fillStyle = "#d2d2d2";
       ctx.fillRect(0, 0, this.width, this.height);
+      this.ensureBackgroundReady();
 
       if (this.backgroundReady) {
         const lift = Math.round(this.height * (this.width < 680 ? 0.08 : 0.1));
@@ -1617,6 +1625,10 @@
           ducking: this.player.duckTime > 0 && this.player.grounded,
         },
         viewport: { width: Math.round(this.width), height: Math.round(this.height), dpr: this.dpr },
+        background: {
+          imageLoaded: Boolean(this.groundImage.naturalWidth),
+          ready: this.backgroundReady,
+        },
       };
     }
   }
