@@ -165,11 +165,11 @@
         speed: 0.5 + Math.random() * 0.8,
         layer: index % 2,
       }));
-      this.birds = Array.from({ length: 7 }, (_, index) => ({
+      this.birds = Array.from({ length: 1 }, (_, index) => ({
         x: 0,
         y: 0,
-        size: 24 + Math.random() * 16,
-        speed: 34 + Math.random() * 28,
+        size: 34 + Math.random() * 10,
+        speed: 28 + Math.random() * 18,
         phase: Math.random() * Math.PI * 2,
         slot: index,
         ready: false,
@@ -443,16 +443,16 @@
     }
 
     dash() {
-      if (this.state !== "running") return;
-      if (this.player.grounded) {
+      if (this.state !== "running" || !this.player.grounded) return;
+      if (this.player.dashCooldown > 0) {
         this.player.duckTime = Math.max(this.player.duckTime, 0.26);
-        this.playCharacterVideo("dash", true);
+        this.holdDashPose();
+        return;
       }
-      if (this.player.dashCooldown > 0) return;
       this.player.dashTime = 1.16;
       this.player.dashCooldown = 1.08;
-      this.player.duckTime = this.player.grounded ? 1.16 : 0;
-      this.playCharacterVideo("dash", true);
+      this.player.duckTime = 1.16;
+      this.holdDashPose();
       sound.dash();
       for (let i = 0; i < 10; i += 1) {
         this.particles.push({
@@ -602,15 +602,7 @@
       this.updateBirds(dt, worldSpeed);
       const dashVideo = this.characterVideos.dash;
       if (this.player.duckTime > 0 && this.player.grounded && dashVideo?.readyState >= 2) {
-        try {
-          if (dashVideo.currentTime < 0.26 || dashVideo.currentTime > 0.52 || dashVideo.ended) {
-            dashVideo.currentTime = 0.34;
-            const playback = dashVideo.play();
-            if (playback?.catch) playback.catch(() => {});
-          }
-        } catch {
-          // Keep the last usable dash frame while the browser seeks.
-        }
+        this.holdDashPose();
       } else if (wasDucking && this.player.grounded) {
         this.playCharacterVideo("run", true);
       }
@@ -723,15 +715,26 @@
       ui.dashFill.style.transform = `scaleX(${1 - this.player.dashCooldown / 1.15})`;
     }
 
+    holdDashPose() {
+      const dashVideo = this.characterVideos.dash;
+      if (!dashVideo) return;
+      try {
+        if (Math.abs(dashVideo.currentTime - 0.34) > 0.04 || dashVideo.ended) dashVideo.currentTime = 0.34;
+        dashVideo.pause();
+      } catch {
+        // Keep whichever decoded dash frame is available while metadata catches up.
+      }
+    }
+
     updateBirds(dt, worldSpeed) {
       for (const bird of this.birds) {
         bird.x -= (bird.speed + worldSpeed * 0.18) * dt;
         bird.phase += dt * 8;
         if (bird.x < -80) {
-          bird.x = this.width + 90 + Math.random() * 220;
-          bird.y = this.height * (0.33 + Math.random() * 0.18);
-          bird.size = 24 + Math.random() * 16;
-          bird.speed = 34 + Math.random() * 28;
+          bird.x = this.width + 140 + Math.random() * 120;
+          bird.y = this.height * (0.31 + Math.random() * 0.1);
+          bird.size = 34 + Math.random() * 10;
+          bird.speed = 28 + Math.random() * 18;
         }
       }
     }
@@ -962,20 +965,28 @@
         const blue = data[index + 2];
         const value = (red + green + blue) / 3;
         const strongestNonGreen = Math.max(red, blue);
+        const greenExcess = green - strongestNonGreen;
         const isGreenScreen =
-          green > 55 &&
-          green - strongestNonGreen > 14 &&
-          green > red * 1.05 &&
-          green > blue * 1.05;
-        if (isGreenScreen || value > 246) {
+          green > 45 &&
+          greenExcess > 8 &&
+          green > red * 1.08 &&
+          green > blue * 1.08;
+        const isSoftGreenEdge =
+          green > 35 &&
+          greenExcess > 4 &&
+          green > red * 1.03 &&
+          green > blue * 1.03;
+        if (isGreenScreen || isSoftGreenEdge) {
           data[index + 3] = 0;
           continue;
         }
-        const ink = clamp(value * 1.02, 0, 255);
+        const ink = clamp(Math.min(red, green, blue) * 1.05, 0, 255);
         data[index] = ink;
         data[index + 1] = ink;
         data[index + 2] = ink;
-        data[index + 3] = 220;
+        const alpha = value > 248 ? 0 : 235;
+        data[index + 3] = alpha;
+        if (alpha === 0) continue;
         const pixel = index / 4;
         const x = pixel % frameWidth;
         const y = Math.floor(pixel / frameWidth);
@@ -994,17 +1005,11 @@
         const drawH = bird.size;
         const drawW = drawH * sourceW / sourceH;
         const bob = Math.sin(bird.phase) * 3;
-        ctx.drawImage(
-          this.birdFrameCanvas,
-          left,
-          top,
-          sourceW,
-          sourceH,
-          bird.x,
-          bird.y + bob,
-          drawW,
-          drawH,
-        );
+        ctx.save();
+        ctx.translate(bird.x + drawW, bird.y + bob);
+        ctx.scale(-1, 1);
+        ctx.drawImage(this.birdFrameCanvas, left, top, sourceW, sourceH, 0, 0, drawW, drawH);
+        ctx.restore();
       }
       ctx.restore();
     }
@@ -1094,13 +1099,15 @@
         if (visiblePixels < Math.max(80, frameWidth * frameHeight * 0.012)) return false;
         frameContext.putImageData(frame, 0, 0);
         ctx.save();
-        ctx.filter = "brightness(0)";
-        ctx.globalAlpha = 0.55;
-        ctx.drawImage(this.frameCanvas, drawX - 1, drawY, width, height);
-        ctx.drawImage(this.frameCanvas, drawX + 1, drawY, width, height);
-        ctx.drawImage(this.frameCanvas, drawX, drawY - 1, width, height);
-        ctx.drawImage(this.frameCanvas, drawX, drawY + 1, width, height);
-        ctx.filter = "none";
+        if (motion !== "dash") {
+          ctx.filter = "brightness(0)";
+          ctx.globalAlpha = 0.55;
+          ctx.drawImage(this.frameCanvas, drawX - 1, drawY, width, height);
+          ctx.drawImage(this.frameCanvas, drawX + 1, drawY, width, height);
+          ctx.drawImage(this.frameCanvas, drawX, drawY - 1, width, height);
+          ctx.drawImage(this.frameCanvas, drawX, drawY + 1, width, height);
+          ctx.filter = "none";
+        }
         ctx.globalAlpha = 1;
         ctx.drawImage(this.frameCanvas, drawX, drawY, width, height);
         ctx.restore();
