@@ -15,6 +15,7 @@ const files = [
   "girl.png",
   "boy.png",
   "obstacle-source.png",
+  "dash-frame.png",
   "favicon.ico",
 ];
 

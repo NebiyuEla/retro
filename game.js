@@ -192,8 +192,10 @@
         girl: new Image(),
         boy: new Image(),
       };
+      this.dashFrameImage = new Image();
       this.characterImages.girl.src = "./girl.png";
       this.characterImages.boy.src = "./boy.png";
+      this.dashFrameImage.src = "./dash-frame.png";
       this.characterVideos = {
         run: this.createCharacterVideo("./Run.mp4", true),
         jump: this.createCharacterVideo("./Jump.mp4", false),
@@ -934,7 +936,8 @@
       ctx.translate(this.player.x, this.groundY + jumpLift);
       const fallbackVideo = this.characterVideos.run;
       if (motion === "dash") {
-        if (video?.readyState >= 2) this.drawVideoCharacter(video, "dash");
+        const drewDashVideo = video?.readyState >= 2 ? this.drawVideoCharacter(video, "dash") : false;
+        if (!drewDashVideo) this.drawDuckFallback();
       } else if (video?.readyState >= 2 || fallbackVideo?.readyState >= 2) {
         this.drawVideoCharacter(video?.readyState >= 2 ? video : fallbackVideo, video?.readyState >= 2 ? motion : "run");
       }
@@ -970,6 +973,7 @@
         const frameHeight = this.frameCanvas.height;
         const frame = frameContext.getImageData(0, 0, frameWidth, frameHeight);
         const data = frame.data;
+        let visiblePixels = 0;
         for (let index = 0; index < data.length; index += 4) {
           const red = data[index];
           const green = data[index + 1];
@@ -987,10 +991,12 @@
             data[index + 1] = ink;
             data[index + 2] = ink;
             data[index + 3] = 255;
+            if (value < 248) visiblePixels += 1;
           } else {
             data[index + 3] = 0;
           }
         }
+        if (visiblePixels < Math.max(80, frameWidth * frameHeight * 0.012)) return false;
         frameContext.putImageData(frame, 0, 0);
         ctx.save();
         ctx.filter = "brightness(0)";
@@ -1003,13 +1009,96 @@
         ctx.globalAlpha = 1;
         ctx.drawImage(this.frameCanvas, drawX, drawY, width, height);
         ctx.restore();
+        return true;
       };
 
       ctx.save();
       ctx.globalAlpha = 1;
-      drawFrame(x, y);
+      const didDraw = drawFrame(x, y);
       ctx.filter = "none";
       ctx.globalAlpha = 1;
+      ctx.restore();
+      return didDraw;
+    }
+
+    drawDuckFallback() {
+      const image = this.dashFrameImage;
+      if (image?.complete && image.naturalWidth > 0) {
+        const mobileScale = this.width < 560 ? 0.9 : 1;
+        const height = 138 * mobileScale;
+        const width = height * (image.naturalWidth / image.naturalHeight);
+        const x = -64 * mobileScale;
+        const y = -136 * mobileScale;
+        ctx.save();
+        ctx.filter = "brightness(0)";
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(image, x - 1, y, width, height);
+        ctx.drawImage(image, x + 1, y, width, height);
+        ctx.drawImage(image, x, y - 1, width, height);
+        ctx.drawImage(image, x, y + 1, width, height);
+        ctx.filter = "none";
+        ctx.globalAlpha = 1;
+        ctx.drawImage(image, x, y, width, height);
+        ctx.restore();
+        return;
+      }
+
+      ctx.save();
+      ctx.translate(-15, -93);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "#111";
+      ctx.fillStyle = "#f4f4f4";
+      ctx.lineWidth = 7;
+
+      ctx.beginPath();
+      ctx.ellipse(50, 62, 40, 18, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#111";
+      ctx.fillRect(54, 50, 38, 12);
+      ctx.fillStyle = "#f4f4f4";
+      ctx.fillRect(22, 49, 31, 18);
+      ctx.strokeRect(22, 49, 31, 18);
+
+      ctx.beginPath();
+      ctx.arc(84, 41, 17, 0, Math.PI * 2);
+      ctx.fillStyle = "#f4f4f4";
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#111";
+      for (let i = 0; i < 9; i += 1) {
+        const angle = -2.8 + i * 0.35;
+        ctx.beginPath();
+        ctx.moveTo(82, 30);
+        ctx.lineTo(82 + Math.cos(angle) * (20 + (i % 3) * 4), 30 + Math.sin(angle) * 22);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "#111";
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(54, 69);
+      ctx.lineTo(22, 88);
+      ctx.lineTo(2, 82);
+      ctx.moveTo(58, 72);
+      ctx.lineTo(92, 91);
+      ctx.lineTo(113, 85);
+      ctx.moveTo(79, 58);
+      ctx.lineTo(106, 50);
+      ctx.moveTo(35, 57);
+      ctx.lineTo(8, 62);
+      ctx.stroke();
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#f4f4f4";
+      ctx.beginPath();
+      ctx.moveTo(31, 54);
+      ctx.lineTo(48, 65);
+      ctx.moveTo(64, 58);
+      ctx.lineTo(84, 64);
+      ctx.stroke();
       ctx.restore();
     }
 
