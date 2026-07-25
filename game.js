@@ -37,28 +37,28 @@
   const dialogue = [
     {
       speaker: "girl",
-      name: "ገንዘቤ",
+      name: "Kobi",
       role: "CITY RUNNER // 01",
       am: "ዛሬ አንድ ካይጁ የአዲስ አበባን ታሪካዊ ቦታዎች ሊያጠፋ መጥቷል።",
       en: "A Kaiju has come to destroy the historic landmarks of Addis Ababa.",
     },
     {
       speaker: "boy",
-      name: "ስለሺ",
+      name: "Thomas",
       role: "SCOUT // 02",
       am: "ገንዘቤ፣ ከተማዋን እንዴት እናድናት?",
-      en: "Ganzebe, what should we do? The streets are already blocked.",
+      en: "Kobi, what should we do? The streets are already blocked.",
     },
     {
       speaker: "girl",
-      name: "ገንዘቤ",
+      name: "Kobi",
       role: "CITY RUNNER // 01",
       am: "እንሮጣለን፣ እንዘላለን፣ ሁሉንም መሰናክል እናልፋለን!",
       en: "We run, we jump, and we overcome every obstacle in our way.",
     },
     {
       speaker: "girl",
-      name: "ገንዘቤ",
+      name: "Kobi",
       role: "CITY RUNNER // 01",
       am: "አዲስ አበባን አብረን እናድን። ዝግጁ ነህ?",
       en: "Let's save Addis Ababa together. Stay close—and don't stop running.",
@@ -197,7 +197,7 @@
       this.characterVideos = {
         run: this.createCharacterVideo("./Run.mp4", true),
         jump: this.createCharacterVideo("./Jump.mp4", false),
-        dash: this.createCharacterVideo("./Dash.mp4", false),
+        dash: this.createCharacterVideo("./Dash.mp4", false, 0.34),
       };
       this.landmarkCanvas = document.createElement("canvas");
       this.landmarkCanvas.width = 1;
@@ -224,7 +224,7 @@
       requestAnimationFrame((time) => this.loop(time));
     }
 
-    createCharacterVideo(source, loop) {
+    createCharacterVideo(source, loop, warmFrame = 0) {
       const video = document.createElement("video");
       video.src = source;
       video.muted = true;
@@ -232,6 +232,15 @@
       video.playsInline = true;
       video.preload = "auto";
       video.setAttribute("aria-hidden", "true");
+      if (warmFrame > 0) {
+        video.addEventListener("loadedmetadata", () => {
+          try {
+            video.currentTime = warmFrame;
+          } catch {
+            // The browser may delay seeking until the first decoded frame.
+          }
+        }, { once: true });
+      }
       video.load();
       return video;
     }
@@ -241,7 +250,7 @@
       if (!video) return;
       if (restart) {
         try {
-          video.currentTime = name === "dash" ? 0.28 : 0;
+          video.currentTime = name === "dash" ? 0.34 : 0;
         } catch {
           // The first decoded frame remains a safe fallback while metadata loads.
         }
@@ -400,12 +409,33 @@
 
     queueJump() {
       if (this.state !== "running") return;
+      if (this.player.grounded || this.player.coyote > 0) {
+        this.performJump();
+        return;
+      }
       this.player.jumpBuffer = 0.13;
       sound.ensure();
     }
 
+    performJump() {
+      this.slideHeld = false;
+      this.player.jumpBuffer = 0;
+      this.player.coyote = 0;
+      this.player.duckTime = 0;
+      this.player.grounded = false;
+      this.player.vy = -Math.max(610, this.height * 0.84);
+      this.playCharacterVideo("jump", true);
+      sound.jump();
+      this.makeDust(this.player.x + 20, this.groundY - 3, 8);
+    }
+
     dash() {
-      if (this.state !== "running" || this.player.dashCooldown > 0) return;
+      if (this.state !== "running") return;
+      if (this.player.grounded) {
+        this.player.duckTime = Math.max(this.player.duckTime, 0.26);
+        this.playCharacterVideo("dash", true);
+      }
+      if (this.player.dashCooldown > 0) return;
       this.player.dashTime = 1.16;
       this.player.dashCooldown = 1.08;
       this.player.duckTime = this.player.grounded ? 1.16 : 0;
@@ -531,39 +561,32 @@
       this.distance += worldSpeed * dt * 0.075;
 
       this.player.jumpBuffer = Math.max(0, this.player.jumpBuffer - dt);
-      const wasDashing = this.player.dashTime > 0;
+      const wasDucking = this.player.duckTime > 0 && this.player.grounded;
       this.player.dashTime = Math.max(0, this.player.dashTime - dt);
       this.player.dashCooldown = Math.max(0, this.player.dashCooldown - dt);
       this.player.duckTime = this.player.grounded ? Math.max(0, this.player.duckTime - dt) : 0;
       if (this.slideHeld && this.player.grounded) {
-        this.player.dashTime = Math.max(this.player.dashTime, 0.18);
         this.player.duckTime = Math.max(this.player.duckTime, 0.18);
       }
       this.player.coyote = this.player.grounded ? 0.1 : Math.max(0, this.player.coyote - dt);
       this.updateBirds(dt, worldSpeed);
       const dashVideo = this.characterVideos.dash;
-      if (this.player.dashTime > 0 && dashVideo?.readyState >= 2) {
+      if (this.player.duckTime > 0 && this.player.grounded && dashVideo?.readyState >= 2) {
         try {
           if (dashVideo.currentTime < 0.26 || dashVideo.currentTime > 0.52 || dashVideo.ended) {
-            dashVideo.currentTime = 0.30;
+            dashVideo.currentTime = 0.34;
             const playback = dashVideo.play();
             if (playback?.catch) playback.catch(() => {});
           }
         } catch {
           // Keep the last usable dash frame while the browser seeks.
         }
-      } else if (wasDashing && this.player.grounded) {
+      } else if (wasDucking && this.player.grounded) {
         this.playCharacterVideo("run", true);
       }
 
       if (this.player.jumpBuffer > 0 && this.player.coyote > 0) {
-        this.player.jumpBuffer = 0;
-        this.player.coyote = 0;
-        this.player.grounded = false;
-        this.player.vy = -Math.max(610, this.height * 0.84);
-        this.playCharacterVideo("jump", true);
-        sound.jump();
-        this.makeDust(this.player.x + 20, this.groundY - 3, 8);
+        this.performJump();
       }
 
       const gravity = Math.max(2250, this.height * 3.05);
@@ -598,16 +621,16 @@
       const ducking = this.player.duckTime > 0 && this.player.grounded;
       const playerBox = ducking
         ? {
-            x: this.player.x - this.player.w * 0.16,
-            y: this.groundY - this.player.h * 0.43,
-            w: this.player.w * 1.55,
-            h: this.player.h * 0.34,
+            x: this.player.x - this.player.w * 0.04,
+            y: this.groundY - this.player.h * 0.39,
+            w: this.player.w * 1.2,
+            h: this.player.h * 0.3,
           }
         : {
-            x: this.player.x + this.player.w * 0.12,
-            y: this.player.y + this.player.h * 0.07,
-            w: this.player.w * 1.34,
-            h: this.player.h * 0.91,
+            x: this.player.x + this.player.w * 0.2,
+            y: this.player.y + this.player.h * 0.08,
+            w: this.player.w * 0.92,
+            h: this.player.h * 0.86,
           };
 
       for (let index = this.obstacles.length - 1; index >= 0; index -= 1) {
@@ -616,8 +639,9 @@
           this.obstacles.splice(index, 1);
           continue;
         }
-        const obstacleLeft = obstacle.x + 1;
-        const obstacleRight = obstacle.x + obstacle.w - 1;
+        const horizontalInset = obstacle.overhead ? 22 : 10;
+        const obstacleLeft = obstacle.x + horizontalInset;
+        const obstacleRight = obstacle.x + obstacle.w - horizontalInset;
         const horizontalOverlap = playerBox.x < obstacleRight && playerBox.x + playerBox.w > obstacleLeft;
         if (obstacle.overhead) {
           if (horizontalOverlap && !ducking) {
@@ -628,9 +652,9 @@
         }
         const obstacleBox = {
           x: obstacleLeft,
-          y: obstacle.y - 1,
-          w: obstacle.w - 2,
-          h: obstacle.h + 1,
+          y: obstacle.y + 8,
+          w: Math.max(8, obstacle.w - horizontalInset * 2),
+          h: Math.max(8, obstacle.h - 10),
         };
         const collides =
           playerBox.x < obstacleBox.x + obstacleBox.w &&
@@ -901,14 +925,17 @@
 
     drawPlayer() {
       const jumpLift = this.player.y + this.player.h - this.groundY;
-      const motion = this.player.dashTime > 0
+      const ducking = this.player.duckTime > 0 && this.player.grounded;
+      const motion = ducking
         ? "dash"
         : (this.player.grounded ? "run" : "jump");
       const video = this.characterVideos[motion];
       ctx.save();
       ctx.translate(this.player.x, this.groundY + jumpLift);
       const fallbackVideo = this.characterVideos.run;
-      if (video?.readyState >= 2 || fallbackVideo?.readyState >= 2) {
+      if (motion === "dash") {
+        if (video?.readyState >= 2) this.drawVideoCharacter(video, "dash");
+      } else if (video?.readyState >= 2 || fallbackVideo?.readyState >= 2) {
         this.drawVideoCharacter(video?.readyState >= 2 ? video : fallbackVideo, video?.readyState >= 2 ? motion : "run");
       }
       ctx.restore();

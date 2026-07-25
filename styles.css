@@ -75,7 +75,7 @@ button {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 13px;
+  gap: 0;
   color: inherit;
   text-decoration: none;
 }

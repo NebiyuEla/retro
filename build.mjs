@@ -15,6 +15,7 @@ const files = [
   "girl.png",
   "boy.png",
   "obstacle-source.png",
+  "favicon.ico",
 ];
 
 await rm("dist", { recursive: true, force: true });
