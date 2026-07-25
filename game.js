@@ -168,7 +168,7 @@
       this.birds = Array.from({ length: 1 }, (_, index) => ({
         x: 0,
         y: 0,
-        size: 34 + Math.random() * 10,
+        size: 44 + Math.random() * 8,
         speed: 28 + Math.random() * 18,
         phase: Math.random() * Math.PI * 2,
         slot: index,
@@ -201,6 +201,8 @@
         jump: this.createCharacterVideo("./Jump.mp4", false),
         dash: this.createCharacterVideo("./Dash.mp4", false, 0.34),
       };
+      this.birdSpriteImage = new Image();
+      this.birdSpriteImage.src = "./bird-sprite.png";
       this.birdVideo = this.createCharacterVideo("./bird-flying.mp4", true);
       this.landmarkCanvas = document.createElement("canvas");
       this.landmarkCanvas.width = 1;
@@ -337,6 +339,36 @@
       if (!this.groundImage.naturalWidth) return;
       if (!this.landmarkReady) this.buildLandmarkCache();
       if (!this.backgroundReady) this.buildBackgroundCache();
+    }
+
+    preloadMap() {
+      if (this.mapReadyPromise) return this.mapReadyPromise;
+      this.mapReadyPromise = new Promise((resolve) => {
+        const finish = () => {
+          this.backgroundCacheKey = "";
+          this.backgroundReady = false;
+          this.buildLandmarkCache();
+          this.buildBackgroundCache();
+          resolve();
+        };
+        if (this.groundImage.complete && this.groundImage.naturalWidth) {
+          if (this.groundImage.decode) {
+            this.groundImage.decode().catch(() => {}).then(finish);
+          } else {
+            finish();
+          }
+          return;
+        }
+        this.groundImage.addEventListener("load", () => {
+          if (this.groundImage.decode) {
+            this.groundImage.decode().catch(() => {}).then(finish);
+          } else {
+            finish();
+          }
+        }, { once: true });
+        this.groundImage.addEventListener("error", finish, { once: true });
+      });
+      return this.mapReadyPromise;
     }
 
     resize() {
@@ -491,6 +523,11 @@
       ui.gameover.classList.remove("is-visible");
       ui.location.textContent = locations[0].label;
       this.playCharacterVideo("run", true);
+      try {
+        if (this.birdVideo?.readyState >= 1) this.birdVideo.currentTime = 1.8;
+      } catch {
+        // The bird video may still be decoding on the first frame.
+      }
       const birdPlayback = this.birdVideo?.play();
       if (birdPlayback?.catch) birdPlayback.catch(() => {});
       sound.start();
@@ -733,7 +770,7 @@
         if (bird.x < -80) {
           bird.x = this.width + 140 + Math.random() * 120;
           bird.y = this.height * (0.31 + Math.random() * 0.1);
-          bird.size = 34 + Math.random() * 10;
+          bird.size = 44 + Math.random() * 8;
           bird.speed = 28 + Math.random() * 18;
         }
       }
@@ -938,113 +975,17 @@
     }
 
     drawBirds() {
-      const video = this.birdVideo;
-      if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
-
-      const frameWidth = 180;
-      const frameHeight = Math.max(1, Math.round(frameWidth * video.videoHeight / video.videoWidth));
-      if (this.birdFrameCanvas.width !== frameWidth || this.birdFrameCanvas.height !== frameHeight) {
-        this.birdFrameCanvas.width = frameWidth;
-        this.birdFrameCanvas.height = frameHeight;
-      }
-
-      const birdContext = this.birdFrameContext;
-      birdContext.setTransform(1, 0, 0, 1, 0, 0);
-      birdContext.clearRect(0, 0, frameWidth, frameHeight);
-      birdContext.imageSmoothingEnabled = true;
-      birdContext.drawImage(video, 0, 0, frameWidth, frameHeight);
-      const frame = birdContext.getImageData(0, 0, frameWidth, frameHeight);
-      const data = frame.data;
-      const totalPixels = frameWidth * frameHeight;
-      const visibleMask = new Uint8Array(totalPixels);
-      for (let index = 0; index < data.length; index += 4) {
-        const red = data[index];
-        const green = data[index + 1];
-        const blue = data[index + 2];
-        const value = (red + green + blue) / 3;
-        const strongestNonGreen = Math.max(red, blue);
-        const greenExcess = green - strongestNonGreen;
-        const isGreenScreen =
-          green > 45 &&
-          greenExcess > 8 &&
-          green > red * 1.08 &&
-          green > blue * 1.08;
-        const isSoftGreenEdge =
-          green > 35 &&
-          greenExcess > 4 &&
-          green > red * 1.03 &&
-          green > blue * 1.03;
-        if (isGreenScreen || isSoftGreenEdge) {
-          data[index + 3] = 0;
-          continue;
-        }
-        const ink = clamp(Math.min(red, green, blue) * 1.05, 0, 255);
-        data[index] = ink;
-        data[index + 1] = ink;
-        data[index + 2] = ink;
-        const alpha = value > 248 ? 0 : 235;
-        data[index + 3] = alpha;
-        if (alpha === 0) continue;
-        const pixel = index / 4;
-        visibleMask[pixel] = 1;
-      }
-
-      const visited = new Uint8Array(totalPixels);
-      let bestPixels = [];
-      const neighbors = [-frameWidth - 1, -frameWidth, -frameWidth + 1, -1, 1, frameWidth - 1, frameWidth, frameWidth + 1];
-      for (let start = 0; start < totalPixels; start += 1) {
-        if (!visibleMask[start] || visited[start]) continue;
-        const stack = [start];
-        const component = [];
-        visited[start] = 1;
-        while (stack.length) {
-          const pixel = stack.pop();
-          component.push(pixel);
-          const x = pixel % frameWidth;
-          for (const offset of neighbors) {
-            const next = pixel + offset;
-            if (next < 0 || next >= totalPixels || visited[next] || !visibleMask[next]) continue;
-            const nextX = next % frameWidth;
-            if (Math.abs(nextX - x) > 1) continue;
-            visited[next] = 1;
-            stack.push(next);
-          }
-        }
-        if (component.length > bestPixels.length) bestPixels = component;
-      }
-      if (bestPixels.length < 2) return;
-
-      const selectedMask = new Uint8Array(totalPixels);
-      let left = frameWidth;
-      let top = frameHeight;
-      let right = 0;
-      let bottom = 0;
-      for (const pixel of bestPixels) {
-        selectedMask[pixel] = 1;
-        const x = pixel % frameWidth;
-        const y = Math.floor(pixel / frameWidth);
-        if (x < left) left = x;
-        if (x > right) right = x;
-        if (y < top) top = y;
-        if (y > bottom) bottom = y;
-      }
-      for (let pixel = 0; pixel < totalPixels; pixel += 1) {
-        if (!selectedMask[pixel]) data[pixel * 4 + 3] = 0;
-      }
-      if (right <= left || bottom <= top) return;
-      birdContext.putImageData(frame, 0, 0);
-
-      const sourceW = right - left + 1;
-      const sourceH = bottom - top + 1;
+      const image = this.birdSpriteImage;
+      if (!image?.complete || !image.naturalWidth || !image.naturalHeight) return;
       ctx.save();
       for (const bird of this.birds) {
         const drawH = bird.size;
-        const drawW = drawH * sourceW / sourceH;
+        const drawW = drawH * image.naturalWidth / image.naturalHeight;
         const bob = Math.sin(bird.phase) * 3;
         ctx.save();
         ctx.translate(bird.x + drawW, bird.y + bob);
         ctx.scale(-1, 1);
-        ctx.drawImage(this.birdFrameCanvas, left, top, sourceW, sourceH, 0, 0, drawW, drawH);
+        ctx.drawImage(image, 0, 0, drawW, drawH);
         ctx.restore();
       }
       ctx.restore();
@@ -1769,6 +1710,7 @@
   }
 
   const sound = new SoundEngine();
+  ui.story.style.visibility = "hidden";
   const game = new RunnerGame();
 
   const story = {
@@ -1962,5 +1904,8 @@
     },
   };
 
-  story.show(0);
+  game.preloadMap().then(() => {
+    ui.story.style.visibility = "";
+    if (game.state === "story") story.show(0);
+  });
 })();
