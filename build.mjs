@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 
 const files = [
   "index.html",
@@ -18,7 +18,30 @@ const files = [
 ];
 
 await rm("dist", { recursive: true, force: true });
-await mkdir("dist", { recursive: true });
+await mkdir("dist/client", { recursive: true });
+await mkdir("dist/server", { recursive: true });
+await mkdir("dist/.openai", { recursive: true });
 for (const file of files) {
-  await cp(file, `dist/${file}`, { recursive: true });
+  await cp(file, `dist/client/${file}`, { recursive: true });
 }
+await cp(".openai/hosting.json", "dist/.openai/hosting.json");
+await writeFile(
+  "dist/server/index.js",
+  `export default {
+  async fetch(request, env) {
+    if (!env?.ASSETS) {
+      return new Response("Static assets binding is unavailable.", { status: 500 });
+    }
+
+    const url = new URL(request.url);
+    if (url.pathname === "/") {
+      return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
+    }
+
+    const response = await env.ASSETS.fetch(request);
+    if (response.status !== 404) return response;
+    return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
+  },
+};
+`,
+);
