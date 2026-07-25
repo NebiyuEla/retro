@@ -389,9 +389,9 @@
 
     dash() {
       if (this.state !== "running" || this.player.dashCooldown > 0) return;
-      this.player.dashTime = 0.58;
+      this.player.dashTime = 0.92;
       this.player.dashCooldown = 1.15;
-      this.player.duckTime = this.player.grounded ? 0.58 : 0;
+      this.player.duckTime = this.player.grounded ? 0.92 : 0;
       this.playCharacterVideo("dash", true);
       sound.dash();
       for (let i = 0; i < 10; i += 1) {
@@ -447,6 +447,9 @@
     gameOver() {
       if (this.state !== "running") return;
       this.state = "gameover";
+      for (const video of Object.values(this.characterVideos)) {
+        video.pause();
+      }
       sound.crash();
       this.best = Math.max(this.best, Math.floor(this.distance));
       localStorage.setItem("addis-runner-best", String(this.best));
@@ -471,12 +474,13 @@
     spawnObstacle(forcedType) {
       const pool = this.distance < 140
         ? ["rubble", "barrier"]
-        : ["rubble", "barrier", "spike", "crate", "overhead"];
-      const type = forcedType || pool[Math.floor(Math.random() * pool.length)];
+        : ["rubble", "barrier", "blockade", "crate", "overhead"];
+      const requestedType = forcedType === "spike" ? "blockade" : forcedType;
+      const type = requestedType || pool[Math.floor(Math.random() * pool.length)];
       const config = {
         rubble: { w: 74, h: 42, breakable: false },
         barrier: { w: 62, h: 66, breakable: false },
-        spike: { w: 56, h: 78, breakable: false },
+        blockade: { w: 72, h: 70, breakable: false },
         crate: { w: 62, h: 58, breakable: true },
         overhead: { w: 136, h: 58, breakable: false, overhead: true },
       }[type];
@@ -498,11 +502,12 @@
 
     update(dt) {
       this.elapsed += dt;
+      if (this.state === "gameover") return;
       this.updateParticles(dt);
       if (this.state !== "running") return;
 
       this.speed = Math.min(535, 305 + this.distance * 0.105);
-      const dashBoost = this.player.dashTime > 0 ? 155 : 0;
+      const dashBoost = this.player.dashTime > 0 ? 70 : 0;
       const worldSpeed = this.speed + dashBoost;
       this.scroll += worldSpeed * dt;
       this.distance += worldSpeed * dt * 0.075;
@@ -885,15 +890,16 @@
     drawVideoCharacter(video, motion) {
       const mobileScale = this.width < 560 ? 0.9 : 1;
       const config = {
-        run: { x: -58, y: -198, width: 235, height: 225, source: [58, 6, 178, 170] },
-        jump: { x: -48, y: -224, width: 188, height: 235, source: [62, 0, 145, 180] },
-        dash: { x: -70, y: -146, width: 250, height: 170, source: [32, 30, 205, 148] },
+        run: { x: -54, y: -234, height: 245, source: [58, 6, 178, 170], highSource: [250, 35, 560, 640] },
+        jump: { x: -48, y: -268, height: 286, source: [62, 0, 145, 180], highSource: [300, 0, 700, 980] },
+        dash: { x: -72, y: -151, height: 154, source: [32, 30, 205, 148], highSource: [230, 220, 620, 430] },
       }[motion];
+      const source = video.videoWidth > 500 && config.highSource ? config.highSource : config.source;
+      const sourceAspect = source ? source[2] / source[3] : (video.videoWidth || 1) / (video.videoHeight || 1);
       const x = config.x * mobileScale;
       const y = config.y * mobileScale;
-      const width = config.width * mobileScale;
       const height = config.height * mobileScale;
-      const source = config.source;
+      const width = height * sourceAspect;
       const drawFrame = (drawX, drawY) => {
         this.frameCanvas.width = Math.max(1, Math.ceil(width));
         this.frameCanvas.height = Math.max(1, Math.ceil(height));
@@ -1353,28 +1359,26 @@
         ctx.fillRect(w - 16, h - 6, 8, 8);
         ctx.fillStyle = Math.sin(this.elapsed * 8 + obstacle.seed) > 0 ? "#f2f2f2" : "#777";
         ctx.fillRect(w / 2 - 4, 2, 8, 8);
-      } else if (obstacle.type === "spike") {
-        poly(
-          [
-            [0, h],
-            [5, h * 0.66],
-            [13, h * 0.8],
-            [18, h * 0.23],
-            [28, h * 0.66],
-            [35, 2],
-            [43, h * 0.65],
-            [w, h],
-          ],
-          "#161616",
-          "#050505",
-          2.5,
-        );
-        sketchLine(20, h * 0.26, 24, h * 0.78, 0.42);
-        sketchLine(36, 7, 40, h * 0.72, 0.42);
-        ctx.fillStyle = "#f2f2f2";
-        ctx.globalAlpha = 0.75;
-        ctx.fillRect(5, h - 6, w - 10, 4);
-        ctx.globalAlpha = 1;
+      } else if (obstacle.type === "blockade") {
+        ctx.fillStyle = "#111";
+        ctx.fillRect(2, 18, w - 4, h - 22);
+        ctx.fillStyle = "#707070";
+        ctx.fillRect(8, 23, w - 16, h - 32);
+        ctx.fillStyle = "#9b9b9b";
+        ctx.fillRect(12, 27, w - 24, 11);
+        ctx.fillStyle = "#3a3a3a";
+        ctx.fillRect(12, h - 33, w - 24, 10);
+        ctx.fillStyle = "#151515";
+        ctx.fillRect(15, 42, w - 30, h - 76);
+        ctx.fillStyle = "#ededed";
+        ctx.fillRect(18, 30, w - 36, 4);
+        ctx.fillRect(18, h - 29, w - 36, 4);
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, h - 11, w, 9);
+        ctx.fillRect(10, h - 5, 10, 7);
+        ctx.fillRect(w - 20, h - 5, 10, 7);
+        sketchLine(13, 39, w - 13, 39, 0.45);
+        sketchLine(14, h - 40, w - 14, h - 40, 0.35);
       } else if (obstacle.type === "overhead") {
         const flicker = Math.sin(this.elapsed * 10 + obstacle.seed) > 0;
         ctx.fillStyle = "#111";
