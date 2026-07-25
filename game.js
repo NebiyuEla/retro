@@ -955,10 +955,8 @@
       birdContext.drawImage(video, 0, 0, frameWidth, frameHeight);
       const frame = birdContext.getImageData(0, 0, frameWidth, frameHeight);
       const data = frame.data;
-      let left = frameWidth;
-      let top = frameHeight;
-      let right = 0;
-      let bottom = 0;
+      const totalPixels = frameWidth * frameHeight;
+      const visibleMask = new Uint8Array(totalPixels);
       for (let index = 0; index < data.length; index += 4) {
         const red = data[index];
         const green = data[index + 1];
@@ -988,12 +986,50 @@
         data[index + 3] = alpha;
         if (alpha === 0) continue;
         const pixel = index / 4;
+        visibleMask[pixel] = 1;
+      }
+
+      const visited = new Uint8Array(totalPixels);
+      let bestPixels = [];
+      const neighbors = [-frameWidth - 1, -frameWidth, -frameWidth + 1, -1, 1, frameWidth - 1, frameWidth, frameWidth + 1];
+      for (let start = 0; start < totalPixels; start += 1) {
+        if (!visibleMask[start] || visited[start]) continue;
+        const stack = [start];
+        const component = [];
+        visited[start] = 1;
+        while (stack.length) {
+          const pixel = stack.pop();
+          component.push(pixel);
+          const x = pixel % frameWidth;
+          for (const offset of neighbors) {
+            const next = pixel + offset;
+            if (next < 0 || next >= totalPixels || visited[next] || !visibleMask[next]) continue;
+            const nextX = next % frameWidth;
+            if (Math.abs(nextX - x) > 1) continue;
+            visited[next] = 1;
+            stack.push(next);
+          }
+        }
+        if (component.length > bestPixels.length) bestPixels = component;
+      }
+      if (bestPixels.length < 2) return;
+
+      const selectedMask = new Uint8Array(totalPixels);
+      let left = frameWidth;
+      let top = frameHeight;
+      let right = 0;
+      let bottom = 0;
+      for (const pixel of bestPixels) {
+        selectedMask[pixel] = 1;
         const x = pixel % frameWidth;
         const y = Math.floor(pixel / frameWidth);
         if (x < left) left = x;
         if (x > right) right = x;
         if (y < top) top = y;
         if (y > bottom) bottom = y;
+      }
+      for (let pixel = 0; pixel < totalPixels; pixel += 1) {
+        if (!selectedMask[pixel]) data[pixel * 4 + 3] = 0;
       }
       if (right <= left || bottom <= top) return;
       birdContext.putImageData(frame, 0, 0);
