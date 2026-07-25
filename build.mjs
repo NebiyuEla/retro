@@ -21,7 +21,10 @@ const files = [
 
 await rm("dist", { recursive: true, force: true });
 await mkdir("dist", { recursive: true });
+await mkdir("dist/client", { recursive: true });
 for (const file of files) {
   await cp(file, `dist/${file}`, { recursive: true });
+  await cp(file, `dist/client/${file}`, { recursive: true });
 }
 await writeFile("dist/.vercel-ready", "Static Vercel build output.\n");
+await writeFile("dist/client/.vercel-ready", "Static Vercel build output.\n");
