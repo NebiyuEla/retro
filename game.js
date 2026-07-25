@@ -1637,6 +1637,7 @@
       ui.hud.classList.remove("is-visible");
       ui.pause.classList.remove("is-visible");
       ui.gameover.classList.remove("is-visible");
+      ui.story.style.display = "";
       ui.story.classList.remove("is-hidden");
       this.render();
     },
@@ -1704,6 +1705,7 @@
       clearInterval(this.typingTimer);
       this.typing = false;
       ui.story.classList.add("is-hidden");
+      ui.story.style.display = "none";
       ui.countdown.classList.remove("is-visible");
       countdown.token += 1;
       game.start();
@@ -1767,6 +1769,7 @@
     snapshot: () => game.snapshot(),
     startNow: () => {
       ui.story.classList.add("is-hidden");
+      ui.story.style.display = "none";
       ui.countdown.classList.remove("is-visible");
       countdown.token += 1;
       game.start();
