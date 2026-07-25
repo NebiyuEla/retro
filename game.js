@@ -480,12 +480,26 @@
       this.player.dashCooldown = 0;
       this.player.duckTime = 0;
       this.ensureBackgroundReady();
+      this.refreshBackgroundAfterStart();
       ui.hud.classList.add("is-visible");
       ui.pause.classList.remove("is-visible");
       ui.gameover.classList.remove("is-visible");
       ui.location.textContent = locations[0].label;
       this.playCharacterVideo("run", true);
       sound.start();
+    }
+
+    refreshBackgroundAfterStart() {
+      [80, 280, 700, 1200].forEach((delay) => {
+        setTimeout(() => {
+          if (!["running", "paused", "gameover"].includes(this.state)) return;
+          if (!this.groundImage.naturalWidth) return;
+          this.backgroundCacheKey = "";
+          this.backgroundReady = false;
+          this.buildLandmarkCache();
+          this.buildBackgroundCache();
+        }, delay);
+      });
     }
 
     restart() {
