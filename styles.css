@@ -465,7 +465,7 @@ button {
   left: 0;
   height: 21%;
   opacity: 0.17;
-  background: url("./ግራውንድ.png") left bottom / auto 170% repeat-x;
+  background: url("./ground.png") left bottom / auto 170% repeat-x;
   filter: sepia(1) hue-rotate(210deg) saturate(2.2) brightness(0.7);
 }
 

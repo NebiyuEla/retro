@@ -192,8 +192,8 @@
         girl: new Image(),
         boy: new Image(),
       };
-      this.characterImages.girl.src = "./ሴት.png";
-      this.characterImages.boy.src = "./ወንድ.png";
+      this.characterImages.girl.src = "./girl.png";
+      this.characterImages.boy.src = "./boy.png";
       this.characterVideos = {
         run: this.createCharacterVideo("./Run.mp4", true),
         jump: this.createCharacterVideo("./Jump.mp4", false),
@@ -216,7 +216,7 @@
         this.buildLandmarkCache();
         this.buildBackgroundCache();
       });
-      this.groundImage.src = "./ግራውንድ.png";
+      this.groundImage.src = "./ground.png";
       this.resize();
       window.addEventListener("resize", () => this.resize());
       this.bindInput();

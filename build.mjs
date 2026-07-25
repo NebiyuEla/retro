@@ -11,10 +11,10 @@ const files = [
   "2.png",
   "3.png",
   "4.png",
-  "ግራውንድ.png",
-  "ሴት.png",
-  "ወንድ.png",
-  "መሰናክል.png",
+  "ground.png",
+  "girl.png",
+  "boy.png",
+  "obstacle-source.png",
 ];
 
 await rm("dist", { recursive: true, force: true });
