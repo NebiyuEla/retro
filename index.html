@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="am">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#120d24" />
+    <meta
+      name="description"
+      content="ገንዘቤ እና ስለሺ አዲስ አበባን ከካይጁ የሚያድኑበት ሬትሮ ሩጫ ጨዋታ።"
+    />
+    <title>አዲስ ሩጫ — Retro Character Runner</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23120d24'/%3E%3Crect x='3' y='3' width='4' height='4' fill='%2343ead2'/%3E%3Crect x='9' y='3' width='4' height='4' fill='%23ff6b8a'/%3E%3Crect x='6' y='9' width='4' height='4' fill='%23f9c74f'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar" aria-label="Game header">
+        <a class="brand" href="#" aria-label="Restart story">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </span>
+          <span>
+            <strong>አዲስ ሩጫ</strong>
+            <small>RETRO RESCUE RUN</small>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <div class="signal-chip">
+            <span class="signal-dot"></span>
+            <span>KAiJU ALERT</span>
+          </div>
+          <button class="icon-button" id="soundButton" type="button" aria-label="Mute sound" title="Sound">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9v6h4l5 4V5L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2-3.74v7.48a4.5 4.5 0 0 0 2-3.74Z" />
+              <path class="sound-wave" d="M16.8 5.2a8.3 8.3 0 0 1 0 13.6M19.5 2.5a12 12 0 0 1 0 19" />
+            </svg>
+          </button>
+          <button class="icon-button" id="pauseButton" type="button" aria-label="Pause game" title="Pause">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h4v16H6V4Zm8 0h4v16h-4V4Z" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="game-frame" aria-label="Retro runner game">
+        <div class="frame-corner corner-tl"></div>
+        <div class="frame-corner corner-tr"></div>
+        <div class="frame-corner corner-bl"></div>
+        <div class="frame-corner corner-br"></div>
+
+        <div class="game-stage" id="gameStage">
+          <canvas id="gameCanvas" aria-label="Playable runner scene"></canvas>
+          <div class="scanlines" aria-hidden="true"></div>
+          <div class="screen-glow" aria-hidden="true"></div>
+
+          <div class="hud" id="hud" aria-live="polite">
+            <div class="hud-card score-card">
+              <span class="hud-label">DISTANCE</span>
+              <strong><span id="scoreValue">00000</span><small>M</small></strong>
+            </div>
+            <div class="hud-card location-card">
+              <span class="hud-label">NOW RUNNING</span>
+              <strong id="locationValue">ፒያሳ · PIASSA</strong>
+            </div>
+            <div class="hud-card best-card">
+              <span class="hud-label">BEST</span>
+              <strong><span id="bestValue">00000</span><small>M</small></strong>
+            </div>
+            <div class="dash-meter" aria-label="Duck energy">
+              <span>DUCK</span>
+              <i><b id="dashFill"></b></i>
+            </div>
+          </div>
+
+          <section class="story-overlay" id="storyOverlay" aria-label="Opening story">
+            <div class="story-atmosphere" aria-hidden="true">
+              <div class="moon"></div>
+              <div class="kaiju-shadow">
+                <span class="kaiju-eye eye-one"></span>
+                <span class="kaiju-eye eye-two"></span>
+              </div>
+              <div class="city-silhouette"></div>
+            </div>
+
+            <div class="story-topline">
+              <div class="story-index">
+                <span>TRANSMISSION</span>
+                <strong id="dialogueCount">01 / 04</strong>
+              </div>
+              <div class="story-progress" aria-hidden="true"><i id="storyProgress"></i></div>
+              <button class="skip-button" id="skipButton" type="button">
+                SKIP <span aria-hidden="true">»</span>
+              </button>
+            </div>
+
+            <div class="portrait-stage">
+              <div class="portrait-card portrait-girl active" id="girlPortrait" aria-hidden="true">
+                <span class="portrait-orbit orbit-one"></span>
+                <span class="portrait-orbit orbit-two"></span>
+                <div class="portrait-image">
+                  <img src="./ሴት.png" alt="" />
+                </div>
+                <span class="portrait-tag">GANZEBE // ገንዘቤ</span>
+              </div>
+              <div class="portrait-card portrait-boy" id="boyPortrait" aria-hidden="true">
+                <span class="portrait-orbit orbit-one"></span>
+                <span class="portrait-orbit orbit-two"></span>
+                <div class="portrait-image">
+                  <img src="./ወንድ.png" alt="" />
+                </div>
+                <span class="portrait-tag">SILESHI // ስለሺ</span>
+              </div>
+            </div>
+
+            <div class="dialogue-wrap">
+              <div class="speaker-label">
+                <span class="speaker-pulse"></span>
+                <strong id="speakerName">ገንዘቤ</strong>
+                <small id="speakerRole">CITY RUNNER // 01</small>
+              </div>
+              <div class="dialogue-box">
+                <div class="quote-mark" aria-hidden="true">“</div>
+                <p class="dialogue-amharic" id="dialogueAmharic"></p>
+                <p class="dialogue-english" id="dialogueEnglish"></p>
+                <button class="next-button" id="nextButton" type="button">
+                  <span id="nextLabel">ቀጥል · NEXT</span>
+                  <i aria-hidden="true">→</i>
+                </button>
+              </div>
+              <p class="story-hint">SPACE / ENTER TO CONTINUE</p>
+            </div>
+          </section>
+
+          <div class="countdown-overlay" id="countdownOverlay" aria-live="assertive">
+            <span id="countdownText">3</span>
+            <small>GET READY // ተዘጋጁ</small>
+          </div>
+
+          <section class="pause-overlay" id="pauseOverlay" aria-label="Game paused">
+            <div class="modal-card">
+              <span class="modal-kicker">SYSTEM HOLD</span>
+              <h2>ጨዋታው ቆሟል</h2>
+              <p>PAUSED — the city will wait for you.</p>
+              <button class="primary-button" id="resumeButton" type="button">ቀጥል · RESUME</button>
+            </div>
+          </section>
+
+          <section class="gameover-overlay" id="gameoverOverlay" aria-label="Game over">
+            <div class="modal-card gameover-card">
+              <span class="modal-kicker">RUN COMPLETE</span>
+              <h2>የከተማው ጥበቃ ይቀጥላል</h2>
+              <p>You protected Addis Ababa for</p>
+              <strong class="final-score"><span id="finalScore">0</span><small> METERS</small></strong>
+              <div class="result-row">
+                <span>BEST RUN</span>
+                <strong id="finalBest">0 M</strong>
+              </div>
+              <button class="primary-button" id="restartButton" type="button">እንደገና ሩጥ · RUN AGAIN</button>
+              <button class="text-button" id="storyAgainButton" type="button">REPLAY STORY</button>
+            </div>
+          </section>
+
+          <div class="touch-controls" aria-label="Touch controls">
+            <button id="jumpButton" type="button" aria-label="Jump">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="m16 5 10 11h-6v11h-8V16H6L16 5Z" /></svg>
+              <span>JUMP</span>
+            </button>
+            <button id="dashButton" type="button" aria-label="Duck">
+              <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 9h12V4l12 12-12 12v-5H4v-5h14v-4H4V9Z" /></svg>
+              <span>DUCK</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div class="controls-strip" aria-label="Keyboard controls">
+        <div><kbd>SPACE</kbd><kbd>↑</kbd><span>JUMP</span></div>
+        <i></i>
+        <div><kbd>SHIFT</kbd><kbd>↓</kbd><span>DUCK / SMASH</span></div>
+        <i></i>
+        <div><kbd>P</kbd><span>PAUSE</span></div>
+        <p><span class="status-light"></span> ADDIS ABABA // NIGHT PATROL 198X</p>
+      </div>
+    </main>
+
+    <script src="./game.js"></script>
+  </body>
+</html>
