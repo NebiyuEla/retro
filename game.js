@@ -240,10 +240,14 @@
       if (!video) return;
       if (restart) {
         try {
-          video.currentTime = 0;
+          video.currentTime = name === "dash" ? 0.32 : 0;
         } catch {
           // The first decoded frame remains a safe fallback while metadata loads.
         }
+      }
+      if (name === "dash") {
+        video.pause();
+        return;
       }
       const playback = video.play();
       if (playback?.catch) playback.catch(() => {});
@@ -861,10 +865,15 @@
       const video = this.characterVideos[motion];
       ctx.save();
       ctx.translate(this.player.x, this.groundY + jumpLift);
-      if (motion === "dash") {
-        ctx.scale(1.2, 0.46);
-      }
       const fallbackVideo = this.characterVideos.run;
+      if (motion === "dash" && video?.readyState >= 2) {
+        try {
+          if (Math.abs(video.currentTime - 0.32) > 0.05) video.currentTime = 0.32;
+          video.pause();
+        } catch {
+          // Keep the last decoded slide frame if the browser is already seeking.
+        }
+      }
       if (video?.readyState >= 2 || fallbackVideo?.readyState >= 2) {
         this.drawVideoCharacter(video?.readyState >= 2 ? video : fallbackVideo, video?.readyState >= 2 ? motion : "run");
       } else {
@@ -876,9 +885,9 @@
     drawVideoCharacter(video, motion) {
       const mobileScale = this.width < 560 ? 0.9 : 1;
       const config = {
-        run: { x: -14, y: -156, width: 148, height: 166, threshold: 6 },
-        jump: { x: -25, y: -189, width: 152, height: 190, source: [24, 0, 150, 180], threshold: 6 },
-        dash: { x: -23, y: -151, width: 151, height: 161, source: [45, 6, 162, 174], threshold: 6 },
+        run: { x: -29, y: -159, width: 160, height: 171, source: [58, 6, 178, 170], threshold: 8 },
+        jump: { x: -23, y: -181, width: 139, height: 184, source: [62, 0, 145, 180], threshold: 8 },
+        dash: { x: -43, y: -133, width: 194, height: 140, source: [32, 30, 205, 148], threshold: 8 },
       }[motion];
       const x = config.x * mobileScale;
       const y = config.y * mobileScale;
@@ -903,8 +912,17 @@
         const data = frame.data;
         const threshold = config.threshold;
         for (let index = 0; index < data.length; index += 4) {
-          const value = (data[index] + data[index + 1] + data[index + 2]) / 3;
-          if (value > threshold) {
+          const red = data[index];
+          const green = data[index + 1];
+          const blue = data[index + 2];
+          const value = (red + green + blue) / 3;
+          const strongestNonGreen = Math.max(red, blue);
+          const isGreenScreen =
+            green > 48 &&
+            green - strongestNonGreen > 18 &&
+            green > red * 1.12 &&
+            green > blue * 1.12;
+          if (!isGreenScreen && value > threshold) {
             const ink = clamp(value * 1.42 + 12, 0, 255);
             data[index] = ink;
             data[index + 1] = ink;
