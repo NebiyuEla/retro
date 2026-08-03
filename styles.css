@@ -1291,7 +1291,6 @@ button {
   }
 }
 
-/* Fullscreen play surface: the game should feel like the site, not a framed mockup. */
 html,
 body {
   width: 100%;

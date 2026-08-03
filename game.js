@@ -181,8 +181,8 @@
       this.monster = {
         x: 0,
         y: 0,
-        w: 128,
-        h: 142,
+        w: 120,
+        h: 132,
         bob: 0,
       };
       this.groundImage = new Image();
@@ -386,11 +386,12 @@
       this.player.w = this.width < 560 ? 88 : 104;
       this.player.h = this.width < 560 ? 96 : 112;
       this.player.x = this.width * (this.width < 680 ? 0.27 : 0.22);
-      this.monster.w = this.width < 560 ? 112 : 148;
-      this.monster.h = this.width < 560 ? 124 : 164;
+      this.monster.h = this.width < 560 ? 132 : 172;
+      this.monster.w = this.monster.h * (820 / 900);
       if (this.player.grounded || this.state !== "running") this.player.y = this.groundY - this.player.h;
       if (this.state !== "running") {
-        this.monster.x = this.player.x - this.monster.w * 0.9;
+        const monsterGap = this.width < 560 ? 16 : 90;
+        this.monster.x = this.player.x - this.monster.w * 1.08 - monsterGap;
         this.monster.y = this.groundY - this.monster.h;
       }
       this.backgroundCacheKey = "";
@@ -513,7 +514,8 @@
       this.player.dashTime = 0;
       this.player.dashCooldown = 0;
       this.player.duckTime = 0;
-      this.monster.x = this.player.x - this.monster.w * 0.94;
+      const monsterGap = this.width < 560 ? 16 : 90;
+      this.monster.x = this.player.x - this.monster.w * 1.08 - monsterGap;
       this.monster.y = this.groundY - this.monster.h;
       this.ensureBackgroundReady();
       this.refreshBackgroundAfterStart();
@@ -591,11 +593,11 @@
       const requestedType = forcedType === "spike" ? "tower" : forcedType;
       const type = requestedType || pool[Math.floor(Math.random() * pool.length)];
       const config = {
-        car: { w: 126, h: 70, breakable: false, image: true, inset: 18, collisionTop: 14, collisionBottom: 12 },
-        truck: { w: 142, h: 76, breakable: false, image: true, inset: 18, collisionTop: 14, collisionBottom: 10 },
-        bus: { w: 176, h: 82, breakable: false, image: true, inset: 20, collisionTop: 12, collisionBottom: 10 },
-        tower: { w: 84, h: 132, breakable: false, image: true, inset: 14, collisionTop: 8, collisionBottom: 8 },
-        plane: { w: 206, h: 76, breakable: false, overhead: true, image: true, inset: 28 },
+        car: { h: 76, source: [247, 361, 1275, 546], breakable: false, image: true, inset: 12, collisionTop: 8, collisionBottom: 6 },
+        truck: { h: 82, source: [256, 401, 1340, 567], breakable: false, image: true, inset: 14, collisionTop: 8, collisionBottom: 6 },
+        bus: { h: 90, source: [233, 352, 1396, 451], breakable: false, image: true, inset: 16, collisionTop: 7, collisionBottom: 6 },
+        tower: { h: 142, source: [346, 21, 1051, 1038], breakable: false, image: true, inset: 18, collisionTop: 4, collisionBottom: 5 },
+        plane: { h: 82, source: [128, 140, 1578, 464], breakable: false, overhead: true, image: true, inset: 18 },
         rubble: { w: 88, h: 50, breakable: false },
         barrier: { w: 82, h: 74, breakable: false },
         blockade: { w: 96, h: 72, breakable: false },
@@ -603,7 +605,8 @@
         overhead: { w: 146, h: 60, breakable: false, overhead: true },
       }[type];
       const mobileScale = this.width < 560 ? 0.82 : 1;
-      const width = config.w * mobileScale;
+      const sourceAspect = config.source ? config.source[2] / config.source[3] : config.w / config.h;
+      const width = (config.w ?? config.h * sourceAspect) * mobileScale;
       const height = config.h * mobileScale;
       this.obstacles.push({
         type,
@@ -614,6 +617,7 @@
         breakable: config.breakable,
         overhead: Boolean(config.overhead),
         imageKey: config.image ? type : "",
+        source: config.source,
         inset: config.inset,
         collisionTop: config.collisionTop,
         collisionBottom: config.collisionBottom,
@@ -763,7 +767,8 @@
       const dashPull = this.player.dashTime > 0 ? 26 : 0;
       const jumpPull = this.player.grounded ? 0 : 18;
       const tension = clamp(this.distance / 900, 0, 1) * 20;
-      const targetX = this.player.x - this.monster.w * 0.78 - 52 + dashPull + jumpPull + tension;
+      const monsterGap = this.width < 560 ? 16 : 90;
+      const targetX = this.player.x - this.monster.w * 1.08 - monsterGap + dashPull + jumpPull + tension;
       const targetY = this.groundY - this.monster.h + Math.sin(this.elapsed * 8.5) * 4;
       const chase = clamp(dt * (3.1 + tension * 0.04), 0, 1);
       this.monster.x = lerp(this.monster.x || targetX, targetX, chase);
@@ -835,8 +840,8 @@
       this.drawBackground();
       this.drawKaiju();
       this.drawRoad();
-      for (const obstacle of this.obstacles) this.drawObstacle(obstacle);
       this.drawMonster();
+      for (const obstacle of this.obstacles) this.drawObstacle(obstacle);
       this.drawPlayer();
       this.drawParticles();
       this.drawForeground();
@@ -995,17 +1000,41 @@
       const w = this.monster.w;
       const h = this.monster.h;
       ctx.save();
-      ctx.globalAlpha = this.state === "running" ? 0.94 : 0.72;
+      ctx.globalAlpha = this.state === "running" ? 0.92 : 0.7;
       ctx.fillStyle = "rgba(0,0,0,.34)";
       ctx.beginPath();
       ctx.ellipse(x + w * 0.5, this.groundY + 7, w * 0.42, 10, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.translate(x, y);
       if (video?.readyState >= 2) {
+        const source = [560, 35, 820, 900];
+        this.frameCanvas.width = Math.max(1, Math.ceil(w));
+        this.frameCanvas.height = Math.max(1, Math.ceil(h));
+        const frameContext = this.frameContext;
+        frameContext.setTransform(1, 0, 0, 1, 0, 0);
+        frameContext.clearRect(0, 0, this.frameCanvas.width, this.frameCanvas.height);
+        frameContext.imageSmoothingEnabled = true;
+        frameContext.drawImage(video, source[0], source[1], source[2], source[3], 0, 0, this.frameCanvas.width, this.frameCanvas.height);
+        const frame = frameContext.getImageData(0, 0, this.frameCanvas.width, this.frameCanvas.height);
+        const data = frame.data;
+        for (let index = 0; index < data.length; index += 4) {
+          const red = data[index];
+          const green = data[index + 1];
+          const blue = data[index + 2];
+          const strongestNonGreen = Math.max(red, blue);
+          const greenDominance = green - strongestNonGreen;
+          if (green > 58 && greenDominance > 12 && green > red * 1.08 && green > blue * 1.08) {
+            data[index + 3] = 0;
+          } else {
+            if (greenDominance > 3) data[index + 1] = Math.min(green, strongestNonGreen + 3);
+            data[index + 3] = 255;
+          }
+        }
+        frameContext.putImageData(frame, 0, 0);
         ctx.save();
-        ctx.shadowColor = "rgba(0,0,0,.38)";
-        ctx.shadowBlur = 12;
-        ctx.drawImage(video, 0, 0, w, h);
+        ctx.shadowColor = "rgba(0,0,0,.32)";
+        ctx.shadowBlur = 8;
+        ctx.drawImage(this.frameCanvas, 0, 0, w, h);
         ctx.restore();
       } else {
         ctx.fillStyle = "#333";
@@ -1541,25 +1570,19 @@
     }
 
     drawImageObstacle(image, obstacle, w, h) {
-      const wobble = Math.sin(this.elapsed * 4 + obstacle.seed) * (obstacle.overhead ? 2 : 0.8);
       ctx.save();
-      ctx.translate(0, wobble);
       ctx.shadowColor = "rgba(0,0,0,.24)";
       ctx.shadowBlur = 8;
       ctx.shadowOffsetY = 3;
-      ctx.drawImage(image, 0, 0, w, h);
-      ctx.restore();
-      if (obstacle.overhead) {
-        ctx.save();
-        ctx.globalAlpha = 0.7 + Math.sin(this.elapsed * 10 + obstacle.seed) * 0.16;
-        ctx.strokeStyle = "#f2f2f2";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(10, h + 6);
-        ctx.lineTo(w - 12, h + 6);
-        ctx.stroke();
-        ctx.restore();
+      if (obstacle.source) {
+        ctx.drawImage(image, obstacle.source[0], obstacle.source[1], obstacle.source[2], obstacle.source[3], 0, 0, w, h);
+      } else {
+        const imageAspect = image.naturalWidth / image.naturalHeight;
+        const drawHeight = Math.min(h, w / imageAspect);
+        const drawWidth = drawHeight * imageAspect;
+        ctx.drawImage(image, (w - drawWidth) / 2, h - drawHeight, drawWidth, drawHeight);
       }
+      ctx.restore();
     }
 
     drawObstacle(obstacle) {
@@ -1572,8 +1595,10 @@
 
       const image = obstacle.imageKey ? this.obstacleImages[obstacle.imageKey] : null;
       if (image?.complete && image.naturalWidth > 0) {
-        ctx.fillStyle = "rgba(0,0,0,.26)";
-        ctx.fillRect(6, h - 4, w + 8, 7);
+        if (!obstacle.overhead) {
+          ctx.fillStyle = "rgba(0,0,0,.26)";
+          ctx.fillRect(6, h - 4, w + 8, 7);
+        }
         this.drawImageObstacle(image, obstacle, w, h);
         ctx.restore();
         return;
