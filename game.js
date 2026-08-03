@@ -178,12 +178,20 @@
         dashCooldown: 0,
         duckTime: 0,
       };
+      this.monster = {
+        x: 0,
+        y: 0,
+        w: 128,
+        h: 142,
+        bob: 0,
+      };
       this.groundImage = new Image();
       this.characterImages = {
         girl: new Image(),
         boy: new Image(),
       };
       this.dashFrameImage = new Image();
+      this.obstacleImages = {};
       this.characterImages.girl.src = "./girl.png";
       this.characterImages.boy.src = "./boy.png";
       this.dashFrameImage.src = "./dash-frame.png";
@@ -192,6 +200,18 @@
         jump: this.createCharacterVideo("./Jump.mp4", false),
         dash: this.createCharacterVideo("./Dash.mp4", false, 0.34),
       };
+      this.monsterVideo = this.createCharacterVideo("./monster.mp4", true);
+      Object.entries({
+        plane: "./obstacle-plane.png",
+        truck: "./obstacle-truck.png",
+        tower: "./obstacle-tower.png",
+        car: "./obstacle-car.png",
+        bus: "./obstacle-bus.png",
+      }).forEach(([name, source]) => {
+        const image = new Image();
+        image.src = source;
+        this.obstacleImages[name] = image;
+      });
       this.landmarkCanvas = document.createElement("canvas");
       this.landmarkCanvas.width = 1;
       this.landmarkCanvas.height = 1;
@@ -229,9 +249,7 @@
         video.addEventListener("loadedmetadata", () => {
           try {
             video.currentTime = warmFrame;
-          } catch {
-            // The browser may delay seeking until the first decoded frame.
-          }
+          } catch {}
         }, { once: true });
       }
       video.load();
@@ -244,9 +262,7 @@
       if (restart) {
         try {
           video.currentTime = name === "dash" ? 0.34 : 0;
-        } catch {
-          // The first decoded frame remains a safe fallback while metadata loads.
-        }
+        } catch {}
       }
       const playback = video.play();
       if (playback?.catch) playback.catch(() => {});
@@ -370,7 +386,13 @@
       this.player.w = this.width < 560 ? 88 : 104;
       this.player.h = this.width < 560 ? 96 : 112;
       this.player.x = this.width * (this.width < 680 ? 0.27 : 0.22);
+      this.monster.w = this.width < 560 ? 112 : 148;
+      this.monster.h = this.width < 560 ? 124 : 164;
       if (this.player.grounded || this.state !== "running") this.player.y = this.groundY - this.player.h;
+      if (this.state !== "running") {
+        this.monster.x = this.player.x - this.monster.w * 0.9;
+        this.monster.y = this.groundY - this.monster.h;
+      }
       this.backgroundCacheKey = "";
       this.buildBackgroundCache();
     }
@@ -491,6 +513,8 @@
       this.player.dashTime = 0;
       this.player.dashCooldown = 0;
       this.player.duckTime = 0;
+      this.monster.x = this.player.x - this.monster.w * 0.94;
+      this.monster.y = this.groundY - this.monster.h;
       this.ensureBackgroundReady();
       this.refreshBackgroundAfterStart();
       ui.hud.classList.add("is-visible");
@@ -498,6 +522,11 @@
       ui.gameover.classList.remove("is-visible");
       ui.location.textContent = locations[0].label;
       this.playCharacterVideo("run", true);
+      try {
+        this.monsterVideo.currentTime = 0;
+      } catch {}
+      const monsterPlayback = this.monsterVideo.play();
+      if (monsterPlayback?.catch) monsterPlayback.catch(() => {});
       sound.start();
     }
 
@@ -533,6 +562,7 @@
       for (const video of Object.values(this.characterVideos)) {
         video.pause();
       }
+      this.monsterVideo.pause();
       sound.crash();
       this.best = Math.max(this.best, Math.floor(this.distance));
       localStorage.setItem("addis-runner-best", String(this.best));
@@ -556,28 +586,37 @@
 
     spawnObstacle(forcedType) {
       const pool = this.distance < 140
-        ? ["rubble", "barrier"]
-        : ["rubble", "barrier", "blockade", "crate", "overhead"];
-      const requestedType = forcedType === "spike" ? "blockade" : forcedType;
+        ? ["car", "truck", "tower"]
+        : ["car", "truck", "bus", "tower", "plane"];
+      const requestedType = forcedType === "spike" ? "tower" : forcedType;
       const type = requestedType || pool[Math.floor(Math.random() * pool.length)];
       const config = {
+        car: { w: 126, h: 70, breakable: false, image: true, inset: 18, collisionTop: 14, collisionBottom: 12 },
+        truck: { w: 142, h: 76, breakable: false, image: true, inset: 18, collisionTop: 14, collisionBottom: 10 },
+        bus: { w: 176, h: 82, breakable: false, image: true, inset: 20, collisionTop: 12, collisionBottom: 10 },
+        tower: { w: 84, h: 132, breakable: false, image: true, inset: 14, collisionTop: 8, collisionBottom: 8 },
+        plane: { w: 206, h: 76, breakable: false, overhead: true, image: true, inset: 28 },
         rubble: { w: 88, h: 50, breakable: false },
         barrier: { w: 82, h: 74, breakable: false },
         blockade: { w: 96, h: 72, breakable: false },
         crate: { w: 74, h: 64, breakable: true },
         overhead: { w: 146, h: 60, breakable: false, overhead: true },
       }[type];
-      const mobileScale = this.width < 560 ? 0.88 : 1;
+      const mobileScale = this.width < 560 ? 0.82 : 1;
       const width = config.w * mobileScale;
       const height = config.h * mobileScale;
       this.obstacles.push({
         type,
         x: this.width + 70,
-        y: config.overhead ? this.groundY - this.player.h * 1.42 : this.groundY - height,
+        y: config.overhead ? this.groundY - this.player.h * 1.38 : this.groundY - height,
         w: width,
         h: height,
         breakable: config.breakable,
         overhead: Boolean(config.overhead),
+        imageKey: config.image ? type : "",
+        inset: config.inset,
+        collisionTop: config.collisionTop,
+        collisionBottom: config.collisionBottom,
         passed: false,
         seed: Math.random() * 10,
       });
@@ -628,6 +667,7 @@
         this.player.vy = 0;
         this.player.grounded = true;
       }
+      this.updateMonster(dt);
 
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
@@ -673,7 +713,7 @@
           this.obstacles.splice(index, 1);
           continue;
         }
-        const horizontalInset = obstacle.overhead ? 22 : 10;
+        const horizontalInset = obstacle.inset ?? (obstacle.overhead ? 22 : 10);
         const obstacleLeft = obstacle.x + horizontalInset;
         const obstacleRight = obstacle.x + obstacle.w - horizontalInset;
         const horizontalOverlap = playerBox.x < obstacleRight && playerBox.x + playerBox.w > obstacleLeft;
@@ -686,9 +726,9 @@
         }
         const obstacleBox = {
           x: obstacleLeft,
-          y: obstacle.y + 13,
+          y: obstacle.y + (obstacle.collisionTop ?? 13),
           w: Math.max(8, obstacle.w - horizontalInset * 2),
-          h: Math.max(8, obstacle.h - 18),
+          h: Math.max(8, obstacle.h - (obstacle.collisionTop ?? 13) - (obstacle.collisionBottom ?? 5)),
         };
         const collides =
           playerBox.x < obstacleBox.x + obstacleBox.w &&
@@ -719,15 +759,24 @@
       ui.dashFill.style.transform = `scaleX(${1 - this.player.dashCooldown / 1.15})`;
     }
 
+    updateMonster(dt) {
+      const dashPull = this.player.dashTime > 0 ? 26 : 0;
+      const jumpPull = this.player.grounded ? 0 : 18;
+      const tension = clamp(this.distance / 900, 0, 1) * 20;
+      const targetX = this.player.x - this.monster.w * 0.78 - 52 + dashPull + jumpPull + tension;
+      const targetY = this.groundY - this.monster.h + Math.sin(this.elapsed * 8.5) * 4;
+      const chase = clamp(dt * (3.1 + tension * 0.04), 0, 1);
+      this.monster.x = lerp(this.monster.x || targetX, targetX, chase);
+      this.monster.y = lerp(this.monster.y || targetY, targetY, clamp(dt * 9, 0, 1));
+    }
+
     holdDashPose() {
       const dashVideo = this.characterVideos.dash;
       if (!dashVideo) return;
       try {
         if (Math.abs(dashVideo.currentTime - 0.34) > 0.04 || dashVideo.ended) dashVideo.currentTime = 0.34;
         dashVideo.pause();
-      } catch {
-        // Keep whichever decoded dash frame is available while metadata catches up.
-      }
+      } catch {}
     }
 
     makeDust(x, y, count) {
@@ -787,6 +836,7 @@
       this.drawKaiju();
       this.drawRoad();
       for (const obstacle of this.obstacles) this.drawObstacle(obstacle);
+      this.drawMonster();
       this.drawPlayer();
       this.drawParticles();
       this.drawForeground();
@@ -935,6 +985,45 @@
       ctx.translate(this.player.x - 72, this.groundY + 2);
       ctx.scale(scale, scale);
       this.drawSuppliedCharacter("boy", phase + 1.2, 0, true);
+      ctx.restore();
+    }
+
+    drawMonster() {
+      const video = this.monsterVideo;
+      const x = Math.round(this.monster.x);
+      const y = Math.round(this.monster.y);
+      const w = this.monster.w;
+      const h = this.monster.h;
+      ctx.save();
+      ctx.globalAlpha = this.state === "running" ? 0.94 : 0.72;
+      ctx.fillStyle = "rgba(0,0,0,.34)";
+      ctx.beginPath();
+      ctx.ellipse(x + w * 0.5, this.groundY + 7, w * 0.42, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.translate(x, y);
+      if (video?.readyState >= 2) {
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,.38)";
+        ctx.shadowBlur = 12;
+        ctx.drawImage(video, 0, 0, w, h);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = "#333";
+        ctx.strokeStyle = "#111";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.2, h);
+        ctx.lineTo(w * 0.42, h * 0.18);
+        ctx.lineTo(w * 0.62, h * 0.18);
+        ctx.lineTo(w * 0.86, h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#0f0f0f";
+        ctx.fillRect(w * 0.42, h * 0.05, w * 0.18, h * 0.2);
+        ctx.fillStyle = "#f2f2f2";
+        ctx.fillRect(w * 0.45, h * 0.3, w * 0.12, h * 0.04);
+      }
       ctx.restore();
     }
 
@@ -1451,6 +1540,28 @@
       ctx.restore();
     }
 
+    drawImageObstacle(image, obstacle, w, h) {
+      const wobble = Math.sin(this.elapsed * 4 + obstacle.seed) * (obstacle.overhead ? 2 : 0.8);
+      ctx.save();
+      ctx.translate(0, wobble);
+      ctx.shadowColor = "rgba(0,0,0,.24)";
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetY = 3;
+      ctx.drawImage(image, 0, 0, w, h);
+      ctx.restore();
+      if (obstacle.overhead) {
+        ctx.save();
+        ctx.globalAlpha = 0.7 + Math.sin(this.elapsed * 10 + obstacle.seed) * 0.16;
+        ctx.strokeStyle = "#f2f2f2";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(10, h + 6);
+        ctx.lineTo(w - 12, h + 6);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     drawObstacle(obstacle) {
       ctx.save();
       ctx.translate(Math.round(obstacle.x), Math.round(obstacle.y));
@@ -1458,6 +1569,15 @@
       const h = obstacle.h;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
+
+      const image = obstacle.imageKey ? this.obstacleImages[obstacle.imageKey] : null;
+      if (image?.complete && image.naturalWidth > 0) {
+        ctx.fillStyle = "rgba(0,0,0,.26)";
+        ctx.fillRect(6, h - 4, w + 8, 7);
+        this.drawImageObstacle(image, obstacle, w, h);
+        ctx.restore();
+        return;
+      }
 
       const poly = (points, fill, stroke = "#111", lineWidth = 2) => {
         ctx.beginPath();
@@ -1611,33 +1731,6 @@
       ctx.fillRect(0, 0, this.width, this.height);
     }
 
-    snapshot() {
-      return {
-        state: this.state,
-        distance: Math.floor(this.distance),
-        speed: Math.round(this.speed),
-        obstacleCount: this.obstacles.length,
-        obstacles: this.obstacles.slice(0, 4).map((obstacle) => ({
-          type: obstacle.type,
-          x: Math.round(obstacle.x),
-          w: Math.round(obstacle.w),
-          breakable: obstacle.breakable,
-          overhead: obstacle.overhead,
-        })),
-        player: {
-          y: Math.round(this.player.y),
-          grounded: this.player.grounded,
-          dashReady: this.player.dashCooldown <= 0,
-          dashActive: this.player.dashTime > 0,
-          ducking: this.player.duckTime > 0 && this.player.grounded,
-        },
-        viewport: { width: Math.round(this.width), height: Math.round(this.height), dpr: this.dpr },
-        background: {
-          imageLoaded: Boolean(this.groundImage.naturalWidth),
-          ready: this.backgroundReady,
-        },
-      };
-    }
   }
 
   const sound = new SoundEngine();
@@ -1784,56 +1877,6 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && game.state === "running") game.togglePause(true);
   });
-
-  window.__runnerGame = {
-    snapshot: () => game.snapshot(),
-    startNow: () => {
-      ui.story.classList.add("is-hidden");
-      ui.story.style.display = "none";
-      ui.countdown.classList.remove("is-visible");
-      countdown.token += 1;
-      game.start();
-    },
-    spawnObstacle: (type) => game.spawnObstacle(type),
-    jump: () => game.queueJump(),
-    dash: () => game.dash(),
-    story: () => story.show(0),
-    restart: () => game.restart(),
-    clearObstacles: () => {
-      game.obstacles.length = 0;
-    },
-    placeObstacle: (type, offset = 126) => {
-      game.obstacles.length = 0;
-      game.player.dashCooldown = 0;
-      game.player.dashTime = 0;
-      game.player.duckTime = 0;
-      game.player.y = game.groundY - game.player.h;
-      game.player.vy = 0;
-      game.player.grounded = true;
-      const configs = {
-        rubble: { w: 88, h: 50, breakable: false },
-        barrier: { w: 82, h: 74, breakable: false },
-        blockade: { w: 96, h: 72, breakable: false },
-        crate: { w: 74, h: 64, breakable: true },
-        overhead: { w: 146, h: 60, breakable: false, overhead: true },
-      };
-      const config = configs[type] || configs.rubble;
-      game.obstacles.push({
-        type,
-        x: game.player.x + offset,
-        y: config.overhead ? game.groundY - game.player.h * 1.42 : game.groundY - config.h,
-        w: config.w,
-        h: config.h,
-        breakable: config.breakable,
-        overhead: Boolean(config.overhead),
-        passed: false,
-        seed: 1,
-      });
-    },
-    holdSpawns: (seconds = 6) => {
-      game.spawnTimer = seconds;
-    },
-  };
 
   game.preloadMap().then(() => {
     ui.story.style.visibility = "";
