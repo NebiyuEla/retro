@@ -781,7 +781,8 @@
 
       this.speed = Math.min(535, 305 + this.distance * 0.105);
       const dashBoost = this.player.dashTime > 0 ? 70 : 0;
-      const worldSpeed = this.speed + dashBoost;
+      const jumpCarryBoost = this.player.grounded ? 0 : Math.min(165, this.speed * 0.46);
+      const worldSpeed = this.speed + dashBoost + jumpCarryBoost;
       this.scroll += worldSpeed * dt;
       this.distance += worldSpeed * dt * 0.075;
 
