@@ -48,7 +48,7 @@
       speaker: "boy",
       name: "Yomif",
       role: "SCOUT // 02",
-      am: "Kobi፣ ከተማዋን እንዴት እናድናት?",
+      am: "Tiki፣ ከተማዋን እንዴት እናድናት?",
       en: "Tiki, what should we do? The streets are already blocked.",
     },
     {
@@ -275,6 +275,7 @@
       };
       this.monsterFrameCache = this.createFrameCache();
       this.coinFrameCache = this.createFrameCache();
+      this.lastCharacterFrameCache = null;
       this.groundImage.addEventListener("load", () => {
         this.buildLandmarkCache();
         this.buildBackgroundCache();
@@ -1396,6 +1397,7 @@
         const cache = this.characterFrameCache[motion];
         const frameTime = video.currentTime || 0;
         const drawCachedFrame = (frameCache = cache) => {
+          if (!frameCache?.ready) return false;
           ctx.save();
           if (motion !== "dash") {
             ctx.filter = "brightness(0)";
@@ -1411,11 +1413,12 @@
           ctx.restore();
           return true;
         };
-        if (cache?.ready && Math.abs(cache.time - frameTime) < 0.012) {
+        if (cache?.ready && (Math.abs(cache.time - frameTime) < 0.022 || (frameTime > cache.time && frameTime - cache.time < 0.026))) {
           return drawCachedFrame();
         }
-        this.frameCanvas.width = Math.max(1, Math.ceil(width));
-        this.frameCanvas.height = Math.max(1, Math.ceil(height));
+        const processScale = motion === "run" ? 0.86 : 0.92;
+        this.frameCanvas.width = Math.max(1, Math.ceil(width * processScale));
+        this.frameCanvas.height = Math.max(1, Math.ceil(height * processScale));
         const frameContext = this.frameContext;
         frameContext.setTransform(1, 0, 0, 1, 0, 0);
         frameContext.clearRect(0, 0, this.frameCanvas.width, this.frameCanvas.height);
@@ -1453,7 +1456,9 @@
           }
         }
         if (visiblePixels < Math.max(80, frameWidth * frameHeight * 0.012)) {
-          const fallbackCache = cache?.ready ? cache : (motion === "run" ? null : this.characterFrameCache.run);
+          const fallbackCache = cache?.ready
+            ? cache
+            : (this.lastCharacterFrameCache?.ready ? this.lastCharacterFrameCache : (motion === "run" ? null : this.characterFrameCache.run));
           if (fallbackCache?.ready) {
             return drawCachedFrame(fallbackCache);
           }
@@ -1470,6 +1475,7 @@
           cache.context.clearRect(0, 0, frameWidth, frameHeight);
           cache.context.drawImage(this.frameCanvas, 0, 0);
           cache.ready = true;
+          if (motion !== "dash") this.lastCharacterFrameCache = cache;
         }
         return drawCachedFrame();
       };
