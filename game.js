@@ -84,6 +84,7 @@
     constructor() {
       this.context = null;
       this.muted = false;
+      this.resumePending = null;
       this.music = new Audio("./fighttotheend-3.mp3");
       this.music.loop = true;
       this.music.preload = "auto";
@@ -93,12 +94,22 @@
 
     ensure() {
       if (this.muted) return null;
+      const activated = navigator.userActivation?.hasBeenActive ?? true;
+      if (!this.context && !activated) return null;
       if (!this.context) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         if (!AudioContext) return null;
         this.context = new AudioContext();
       }
-      if (this.context.state === "suspended") this.context.resume();
+      if (this.context.state === "suspended") {
+        if (!this.resumePending) {
+          this.resumePending = this.context.resume().catch(() => {}).finally(() => {
+            this.resumePending = null;
+          });
+        }
+        return null;
+      }
+      if (this.context.state !== "running") return null;
       return this.context;
     }
 
@@ -301,7 +312,7 @@
       canvas.height = 1;
       return {
         canvas,
-        context: canvas.getContext("2d", { alpha: true }),
+        context: canvas.getContext("2d", { alpha: true, willReadFrequently: true }),
         ready: false,
         time: -1,
         width: 1,
@@ -445,7 +456,7 @@
       if (this.state !== "running") {
         const monsterGap = this.width < 560 ? 16 : 90;
         this.monster.x = this.player.x - this.monster.w * 1.08 - monsterGap;
-        this.monster.y = this.groundY - this.monster.h + this.monster.h * 0.15;
+        this.monster.y = this.groundY - this.monster.h + this.monster.h * 0.2;
       }
       this.backgroundCacheKey = "";
       this.buildBackgroundCache();
@@ -519,7 +530,7 @@
       this.player.coyote = 0;
       this.player.duckTime = 0;
       this.player.grounded = false;
-      this.player.vy = -Math.max(720, this.height * 0.84);
+      this.player.vy = -Math.max(690, this.height * 0.8);
       this.playCharacterVideo("jump", true);
       sound.jump();
       this.makeDust(this.player.x + 20, this.groundY - 3, 8);
@@ -572,7 +583,7 @@
       this.player.duckTime = 0;
       const monsterGap = this.width < 560 ? 16 : 90;
       this.monster.x = this.player.x - this.monster.w * 1.08 - monsterGap;
-      this.monster.y = this.groundY - this.monster.h + this.monster.h * 0.15;
+      this.monster.y = this.groundY - this.monster.h + this.monster.h * 0.2;
       this.ensureBackgroundReady();
       this.refreshBackgroundAfterStart();
       ui.hud.classList.add("is-visible");
@@ -659,9 +670,9 @@
 
     spawnObstacle(forcedType) {
       const pool = this.distance < 140
-        ? ["car", "truck", "tower"]
-        : ["car", "truck", "bus", "tower", "plane"];
-      const requestedType = forcedType === "spike" ? "tower" : forcedType;
+        ? ["car", "truck"]
+        : ["car", "truck", "bus", "plane"];
+      const requestedType = (forcedType === "spike" || forcedType === "tower") ? "truck" : forcedType;
       const type = requestedType || pool[Math.floor(Math.random() * pool.length)];
       const config = {
         car: { h: 70, source: [247, 361, 1275, 546], breakable: false, image: true, inset: 12, collisionTop: 8, collisionBottom: 6 },
@@ -704,11 +715,27 @@
       let moved = 0;
       for (const coin of this.coins) {
         const horizontalOverlap = coin.x < obstacle.x + obstacle.w + 35 && coin.x + coin.size > obstacle.x - 35;
-        const verticalOverlap = coin.y < obstacle.y + obstacle.h + 20 && coin.y + coin.size > obstacle.y - 20;
-        if (!horizontalOverlap || !verticalOverlap) continue;
+        if (!horizontalOverlap) continue;
         coin.x = obstacle.x + obstacle.w + 150 + moved * spacing;
         coin.y = Math.min(coin.y, this.groundY - this.player.h * 1.02 - coin.size / 2);
         moved += 1;
+      }
+    }
+
+    keepCoinsAwayFromObstacles() {
+      const margin = this.width < 560 ? 70 : 95;
+      const pushGap = this.width < 560 ? 110 : 145;
+      for (const coin of this.coins) {
+        for (let guard = 0; guard < 4; guard += 1) {
+          const blocker = this.obstacles.find((obstacle) => {
+            const left = obstacle.x - margin;
+            const right = obstacle.x + obstacle.w + margin;
+            return coin.x < right && coin.x + coin.size > left;
+          });
+          if (!blocker) break;
+          coin.x = blocker.x + blocker.w + pushGap + guard * 28;
+          coin.previousX = coin.x;
+        }
       }
     }
 
@@ -778,7 +805,7 @@
         this.performJump();
       }
 
-      const gravity = Math.max(1350, this.height * 1.6);
+      const gravity = Math.max(1720, this.height * 2);
       this.player.vy += gravity * dt;
       this.player.y += this.player.vy * dt;
       const floor = this.groundY - this.player.h;
@@ -820,6 +847,7 @@
         coin.x -= worldSpeed * dt;
         coin.phase += dt * 5.8;
       }
+      this.keepCoinsAwayFromObstacles();
 
       const ducking = this.player.duckTime > 0 && this.player.grounded;
       const airborne = !this.player.grounded;
@@ -933,7 +961,7 @@
       const tension = clamp(this.distance / 900, 0, 1) * 20;
       const monsterGap = this.width < 560 ? 16 : 90;
       const targetX = this.player.x - this.monster.w * 1.08 - monsterGap + dashPull + jumpPull + tension;
-      const targetY = this.groundY - this.monster.h + this.monster.h * 0.15 + Math.sin(this.elapsed * 8.5) * 4;
+      const targetY = this.groundY - this.monster.h + this.monster.h * 0.2 + Math.sin(this.elapsed * 8.5) * 3;
       const chase = clamp(dt * (3.1 + tension * 0.04), 0, 1);
       this.monster.x = lerp(this.monster.x || targetX, targetX, chase);
       this.monster.y = lerp(this.monster.y || targetY, targetY, clamp(dt * 9, 0, 1));
@@ -1262,28 +1290,31 @@
       const y = Math.round(this.monster.y);
       const w = this.monster.w;
       const h = this.monster.h;
+      const cache = this.monsterFrameCache;
+      const drawCachedMonster = () => {
+        if (!cache?.ready) return false;
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,.32)";
+        ctx.shadowBlur = 8;
+        ctx.drawImage(cache.canvas, 0, 0, w, h);
+        ctx.restore();
+        return true;
+      };
       ctx.save();
       ctx.globalAlpha = this.state === "running" ? 0.92 : 0.7;
-      ctx.fillStyle = "rgba(0,0,0,.34)";
-      ctx.beginPath();
-      ctx.ellipse(x + w * 0.5, this.groundY + 7, w * 0.42, 10, 0, 0, Math.PI * 2);
-      ctx.fill();
       ctx.translate(x, y);
       if (video?.readyState >= 2) {
-        const cache = this.monsterFrameCache;
         const frameTime = video.currentTime || 0;
-        if (cache.ready && Math.abs(cache.time - frameTime) < 0.028) {
-          ctx.save();
-          ctx.shadowColor = "rgba(0,0,0,.32)";
-          ctx.shadowBlur = 8;
-          ctx.drawImage(cache.canvas, 0, 0, w, h);
-          ctx.restore();
+        if (cache.ready && (Math.abs(cache.time - frameTime) < 0.035 || (frameTime > cache.time && frameTime - cache.time < 0.06))) {
+          drawCachedMonster();
           ctx.restore();
           return;
         }
         const source = [560, 35, 820, 900];
-        this.frameCanvas.width = Math.max(1, Math.ceil(w));
-        this.frameCanvas.height = Math.max(1, Math.ceil(h));
+        const processWidth = this.width < 560 ? 118 : 150;
+        const processHeight = Math.round(processWidth * (source[3] / source[2]));
+        this.frameCanvas.width = processWidth;
+        this.frameCanvas.height = processHeight;
         const frameContext = this.frameContext;
         frameContext.setTransform(1, 0, 0, 1, 0, 0);
         frameContext.clearRect(0, 0, this.frameCanvas.width, this.frameCanvas.height);
@@ -1307,30 +1338,7 @@
           }
         }
         if (visiblePixels < this.frameCanvas.width * this.frameCanvas.height * 0.08) {
-          if (cache.ready) {
-            ctx.save();
-            ctx.shadowColor = "rgba(0,0,0,.32)";
-            ctx.shadowBlur = 8;
-            ctx.drawImage(cache.canvas, 0, 0, w, h);
-            ctx.restore();
-            ctx.restore();
-            return;
-          }
-          ctx.fillStyle = "#333";
-          ctx.strokeStyle = "#111";
-          ctx.lineWidth = 4;
-          ctx.beginPath();
-          ctx.moveTo(w * 0.2, h);
-          ctx.lineTo(w * 0.42, h * 0.18);
-          ctx.lineTo(w * 0.62, h * 0.18);
-          ctx.lineTo(w * 0.86, h);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-          ctx.fillStyle = "#0f0f0f";
-          ctx.fillRect(w * 0.42, h * 0.05, w * 0.18, h * 0.2);
-          ctx.fillStyle = "#f2f2f2";
-          ctx.fillRect(w * 0.45, h * 0.3, w * 0.12, h * 0.04);
+          drawCachedMonster();
           ctx.restore();
           return;
         }
@@ -1344,27 +1352,9 @@
         cache.context.clearRect(0, 0, cache.canvas.width, cache.canvas.height);
         cache.context.drawImage(this.frameCanvas, 0, 0);
         cache.ready = true;
-        ctx.save();
-        ctx.shadowColor = "rgba(0,0,0,.32)";
-        ctx.shadowBlur = 8;
-        ctx.drawImage(cache.canvas, 0, 0, w, h);
-        ctx.restore();
+        drawCachedMonster();
       } else {
-        ctx.fillStyle = "#333";
-        ctx.strokeStyle = "#111";
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(w * 0.2, h);
-        ctx.lineTo(w * 0.42, h * 0.18);
-        ctx.lineTo(w * 0.62, h * 0.18);
-        ctx.lineTo(w * 0.86, h);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#0f0f0f";
-        ctx.fillRect(w * 0.42, h * 0.05, w * 0.18, h * 0.2);
-        ctx.fillStyle = "#f2f2f2";
-        ctx.fillRect(w * 0.45, h * 0.3, w * 0.12, h * 0.04);
+        drawCachedMonster();
       }
       ctx.restore();
     }
