@@ -679,7 +679,7 @@
       const sourceAspect = config.source ? config.source[2] / config.source[3] : config.w / config.h;
       const width = (config.w ?? config.h * sourceAspect) * mobileScale;
       const height = config.h * mobileScale;
-      this.obstacles.push({
+      const obstacle = {
         type,
         x: this.width + 70,
         y: config.overhead ? this.groundY - this.player.h * 1.84 : this.groundY - height,
@@ -694,7 +694,22 @@
         collisionBottom: config.collisionBottom,
         passed: false,
         seed: Math.random() * 10,
-      });
+      };
+      this.obstacles.push(obstacle);
+      this.separateCoinsFromObstacle(obstacle);
+    }
+
+    separateCoinsFromObstacle(obstacle) {
+      const spacing = (this.width < 560 ? 92 : 118) * (this.width < 560 ? 0.86 : 1);
+      let moved = 0;
+      for (const coin of this.coins) {
+        const horizontalOverlap = coin.x < obstacle.x + obstacle.w + 35 && coin.x + coin.size > obstacle.x - 35;
+        const verticalOverlap = coin.y < obstacle.y + obstacle.h + 20 && coin.y + coin.size > obstacle.y - 20;
+        if (!horizontalOverlap || !verticalOverlap) continue;
+        coin.x = obstacle.x + obstacle.w + 150 + moved * spacing;
+        coin.y = Math.min(coin.y, this.groundY - this.player.h * 1.02 - coin.size / 2);
+        moved += 1;
+      }
     }
 
     spawnCoinCluster(forcedLane) {
@@ -708,8 +723,17 @@
       ];
       const laneIndex = typeof forcedLane === "number" ? forcedLane : Math.floor(Math.random() * lanes.length);
       const count = laneIndex === 2 ? 3 : 4;
-      const startX = this.width + 120;
       const spacing = 108 * mobileScale;
+      const clusterWidth = size + (count - 1) * spacing;
+      let startX = this.width + 120;
+      for (const obstacle of this.obstacles) {
+        const clearLeft = startX - 70;
+        const clearRight = startX + clusterWidth + 90;
+        const obstacleLeft = obstacle.x;
+        const obstacleRight = obstacle.x + obstacle.w;
+        const overlaps = obstacleRight > clearLeft && obstacleLeft < clearRight;
+        if (overlaps) startX = obstacleRight + 150 * mobileScale;
+      }
       const arc = laneIndex === 1 ? 11 : laneIndex === 2 ? 16 : 6;
       for (let index = 0; index < count; index += 1) {
         const centerY = lanes[laneIndex] - Math.sin((index / Math.max(1, count - 1)) * Math.PI) * arc;
@@ -1241,8 +1265,7 @@
       ctx.translate(x, y);
       if (video?.readyState >= 2) {
         const cache = this.monsterFrameCache;
-        const frameTime = video.currentTime || 0;
-        if (cache.ready && Math.abs(cache.time - frameTime) < 0.028) {
+        if (cache.ready) {
           ctx.save();
           ctx.shadowColor = "rgba(0,0,0,.32)";
           ctx.shadowBlur = 8;
@@ -1251,6 +1274,7 @@
           ctx.restore();
           return;
         }
+        const frameTime = video.currentTime || 0;
         const source = [560, 35, 820, 900];
         this.frameCanvas.width = Math.max(1, Math.ceil(w));
         this.frameCanvas.height = Math.max(1, Math.ceil(h));
@@ -1276,12 +1300,22 @@
             if ((red + green + blue) / 3 < 245) visiblePixels += 1;
           }
         }
-        if (visiblePixels < this.frameCanvas.width * this.frameCanvas.height * 0.08 && cache.ready) {
-          ctx.save();
-          ctx.shadowColor = "rgba(0,0,0,.32)";
-          ctx.shadowBlur = 8;
-          ctx.drawImage(cache.canvas, 0, 0, w, h);
-          ctx.restore();
+        if (visiblePixels < this.frameCanvas.width * this.frameCanvas.height * 0.08) {
+          ctx.fillStyle = "#333";
+          ctx.strokeStyle = "#111";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(w * 0.2, h);
+          ctx.lineTo(w * 0.42, h * 0.18);
+          ctx.lineTo(w * 0.62, h * 0.18);
+          ctx.lineTo(w * 0.86, h);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#0f0f0f";
+          ctx.fillRect(w * 0.42, h * 0.05, w * 0.18, h * 0.2);
+          ctx.fillStyle = "#f2f2f2";
+          ctx.fillRect(w * 0.45, h * 0.3, w * 0.12, h * 0.04);
           ctx.restore();
           return;
         }
