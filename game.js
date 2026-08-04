@@ -530,7 +530,7 @@
       this.player.coyote = 0;
       this.player.duckTime = 0;
       this.player.grounded = false;
-      this.player.vy = -Math.max(875, this.height * 1.02);
+      this.player.vy = -Math.max(890, this.height * 1.04);
       this.playCharacterVideo("jump", true);
       sound.jump();
       this.makeDust(this.player.x + 20, this.groundY - 3, 8);
@@ -805,7 +805,7 @@
         this.performJump();
       }
 
-      const gravity = Math.max(2030, this.height * 2.35);
+      const gravity = Math.max(1880, this.height * 2.18);
       this.player.vy += gravity * dt;
       this.player.y += this.player.vy * dt;
       const floor = this.groundY - this.player.h;
