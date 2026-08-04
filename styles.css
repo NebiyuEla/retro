@@ -282,7 +282,7 @@ button {
   right: 18px;
   left: 18px;
   display: grid;
-  grid-template-columns: 1fr minmax(160px, 1.1fr) 1fr;
+  grid-template-columns: 1fr 0.65fr minmax(160px, 1.1fr) 1fr;
   align-items: start;
   gap: 8px;
   opacity: 0;
@@ -305,11 +305,12 @@ button {
   backdrop-filter: blur(2px);
 }
 
-.hud-card:nth-child(2) {
+.hud-card:nth-child(2),
+.hud-card:nth-child(3) {
   text-align: center;
 }
 
-.hud-card:nth-child(3) {
+.hud-card:nth-child(4) {
   text-align: right;
 }
 
@@ -334,6 +335,10 @@ button {
   margin-left: 4px;
   color: var(--cyan);
   font-size: 7px;
+}
+
+.coin-card strong {
+  color: #f2f2f2;
 }
 
 .location-card strong {
@@ -1213,7 +1218,7 @@ button {
     top: 10px;
     right: 10px;
     left: 10px;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 0.7fr 1fr;
   }
 
   .location-card {
@@ -1225,8 +1230,12 @@ button {
     text-align: left !important;
   }
 
-  .hud-card:nth-child(3) {
+  .coin-card {
     grid-column: 2;
+  }
+
+  .best-card {
+    grid-column: 3;
   }
 
   .dash-meter {

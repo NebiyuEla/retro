@@ -23,6 +23,7 @@
     countdownText: $("#countdownText"),
     hud: $("#hud"),
     score: $("#scoreValue"),
+    coins: $("#coinValue"),
     best: $("#bestValue"),
     location: $("#locationValue"),
     dashFill: $("#dashFill"),
@@ -30,6 +31,7 @@
     gameover: $("#gameoverOverlay"),
     finalScore: $("#finalScore"),
     finalBest: $("#finalBest"),
+    finalCoins: $("#finalCoins"),
     sound: $("#soundButton"),
     pauseButton: $("#pauseButton"),
   };
@@ -135,6 +137,10 @@
       this.tone(140, 0.18, "sawtooth", 0.045, -60);
     }
 
+    collect() {
+      this.tone(760, 0.055, "square", 0.022, 160);
+    }
+
     start() {
       this.playMusic();
       this.tone(330, 0.08, "square", 0.04, 120);
@@ -175,9 +181,12 @@
       this.speed = 305;
       this.scroll = 0;
       this.spawnTimer = 1.35;
+      this.coinSpawnTimer = 0.95;
+      this.coinCount = 0;
       this.locationIndex = 0;
       this.slideHeld = false;
       this.obstacles = [];
+      this.coins = [];
       this.particles = [];
       this.speedLines = [];
       this.clouds = Array.from({ length: 8 }, (_, index) => ({
@@ -223,6 +232,7 @@
         dash: this.createCharacterVideo("./Dash.mp4", false, 0.34),
       };
       this.monsterVideo = this.createCharacterVideo("./monster.mp4", true);
+      this.coinVideo = this.createCharacterVideo("./coin.mp4", true);
       Object.entries({
         plane: "./obstacle-plane.png",
         truck: "./obstacle-truck.png",
@@ -252,6 +262,8 @@
         jump: this.createFrameCache(),
         dash: this.createFrameCache(),
       };
+      this.monsterFrameCache = this.createFrameCache();
+      this.coinFrameCache = this.createFrameCache();
       this.groundImage.addEventListener("load", () => {
         this.buildLandmarkCache();
         this.buildBackgroundCache();
@@ -291,6 +303,7 @@
         canvas,
         context: canvas.getContext("2d", { alpha: true }),
         ready: false,
+        time: -1,
         width: 1,
         height: 1,
       };
@@ -426,13 +439,13 @@
       this.player.w = this.width < 560 ? 88 : 104;
       this.player.h = this.width < 560 ? 96 : 112;
       this.player.x = this.width * (this.width < 680 ? 0.27 : 0.22);
-      this.monster.h = this.width < 560 ? 158 : 210;
+      this.monster.h = this.width < 560 ? 210 : 282;
       this.monster.w = this.monster.h * (820 / 900);
       if (this.player.grounded || this.state !== "running") this.player.y = this.groundY - this.player.h;
       if (this.state !== "running") {
         const monsterGap = this.width < 560 ? 16 : 90;
         this.monster.x = this.player.x - this.monster.w * 1.08 - monsterGap;
-        this.monster.y = this.groundY - this.monster.h;
+        this.monster.y = this.groundY - this.monster.h + this.monster.h * 0.15;
       }
       this.backgroundCacheKey = "";
       this.buildBackgroundCache();
@@ -544,7 +557,10 @@
       this.speed = 305;
       this.scroll = 0;
       this.spawnTimer = 1.55;
+      this.coinSpawnTimer = 0.85;
+      this.coinCount = 0;
       this.obstacles.length = 0;
+      this.coins.length = 0;
       this.particles.length = 0;
       this.locationIndex = 0;
       this.slideHeld = false;
@@ -556,19 +572,23 @@
       this.player.duckTime = 0;
       const monsterGap = this.width < 560 ? 16 : 90;
       this.monster.x = this.player.x - this.monster.w * 1.08 - monsterGap;
-      this.monster.y = this.groundY - this.monster.h;
+      this.monster.y = this.groundY - this.monster.h + this.monster.h * 0.15;
       this.ensureBackgroundReady();
       this.refreshBackgroundAfterStart();
       ui.hud.classList.add("is-visible");
       ui.pause.classList.remove("is-visible");
       ui.gameover.classList.remove("is-visible");
       ui.location.textContent = locations[0].label;
+      ui.coins.textContent = "00";
       this.playCharacterVideo("run", true);
       try {
         this.monsterVideo.currentTime = 0;
+        this.coinVideo.currentTime = 0;
       } catch {}
       const monsterPlayback = this.monsterVideo.play();
       if (monsterPlayback?.catch) monsterPlayback.catch(() => {});
+      const coinPlayback = this.coinVideo.play();
+      if (coinPlayback?.catch) coinPlayback.catch(() => {});
       sound.start();
     }
 
@@ -597,9 +617,12 @@
       ui.pause.classList.toggle("is-visible", shouldPause);
       if (shouldPause) {
         sound.pauseMusic();
+        this.coinVideo.pause();
       } else {
         this.lastTime = performance.now();
         sound.playMusic();
+        const coinPlayback = this.coinVideo.play();
+        if (coinPlayback?.catch) coinPlayback.catch(() => {});
       }
     }
 
@@ -610,6 +633,7 @@
         video.pause();
       }
       this.monsterVideo.pause();
+      this.coinVideo.pause();
       sound.pauseMusic();
       sound.crash();
       this.best = Math.max(this.best, Math.floor(this.distance));
@@ -617,6 +641,7 @@
       ui.best.textContent = pad(this.best);
       ui.finalScore.textContent = Math.floor(this.distance);
       ui.finalBest.textContent = `${this.best} M`;
+      ui.finalCoins.textContent = String(this.coinCount);
       setTimeout(() => ui.gameover.classList.add("is-visible"), 260);
       for (let i = 0; i < 28; i += 1) {
         this.particles.push({
@@ -670,6 +695,31 @@
         passed: false,
         seed: Math.random() * 10,
       });
+    }
+
+    spawnCoinCluster(forcedLane) {
+      if (this.coins.length > 14) return;
+      const mobileScale = this.width < 560 ? 0.86 : 1;
+      const size = (this.width < 560 ? 42 : 48) * mobileScale;
+      const lanes = [
+        this.groundY - this.player.h * 0.62,
+        this.groundY - this.player.h * 1.02,
+        this.groundY - this.player.h * 1.36,
+      ];
+      const laneIndex = typeof forcedLane === "number" ? forcedLane : Math.floor(Math.random() * lanes.length);
+      const count = laneIndex === 2 ? 3 : 4;
+      const startX = this.width + 120;
+      const spacing = 108 * mobileScale;
+      const arc = laneIndex === 1 ? 11 : laneIndex === 2 ? 16 : 6;
+      for (let index = 0; index < count; index += 1) {
+        const centerY = lanes[laneIndex] - Math.sin((index / Math.max(1, count - 1)) * Math.PI) * arc;
+        this.coins.push({
+          x: startX + index * spacing,
+          y: centerY - size / 2,
+          size,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
     }
 
     update(dt) {
@@ -726,12 +776,24 @@
         this.spawnTimer = targetGap / this.speed;
       }
 
+      this.coinSpawnTimer -= dt;
+      if (this.coinSpawnTimer <= 0) {
+        this.spawnCoinCluster();
+        const coinGap = 390 + Math.random() * 330;
+        this.coinSpawnTimer = coinGap / this.speed;
+      }
+
       for (const obstacle of this.obstacles) {
         obstacle.x -= worldSpeed * dt;
         if (!obstacle.passed && obstacle.x + obstacle.w < this.player.x) {
           obstacle.passed = true;
           sound.tone(680, 0.035, "square", 0.012);
         }
+      }
+
+      for (const coin of this.coins) {
+        coin.x -= worldSpeed * dt;
+        coin.phase += dt * 5.8;
       }
 
       const ducking = this.player.duckTime > 0 && this.player.grounded;
@@ -797,6 +859,32 @@
         }
       }
 
+      for (let index = this.coins.length - 1; index >= 0; index -= 1) {
+        const coin = this.coins[index];
+        if (coin.x + coin.size < -30) {
+          this.coins.splice(index, 1);
+          continue;
+        }
+        const inset = coin.size * 0.1;
+        const coinBox = {
+          x: coin.x + inset,
+          y: coin.y + inset,
+          w: coin.size - inset * 2,
+          h: coin.size - inset * 2,
+        };
+        const collected =
+          playerBox.x < coinBox.x + coinBox.w &&
+          playerBox.x + playerBox.w > coinBox.x &&
+          playerBox.y < coinBox.y + coinBox.h &&
+          playerBox.y + playerBox.h > coinBox.y;
+        if (!collected) continue;
+        this.coins.splice(index, 1);
+        this.coinCount += 1;
+        ui.coins.textContent = String(this.coinCount).padStart(2, "0");
+        sound.collect();
+        this.makeCoinSpark(coin.x + coin.size / 2, coin.y + coin.size / 2);
+      }
+
       const newLocationIndex = locations.reduce((value, location, index) => (this.distance >= location.at ? index : value), 0);
       if (newLocationIndex !== this.locationIndex) {
         this.locationIndex = newLocationIndex;
@@ -815,7 +903,7 @@
       const tension = clamp(this.distance / 900, 0, 1) * 20;
       const monsterGap = this.width < 560 ? 16 : 90;
       const targetX = this.player.x - this.monster.w * 1.08 - monsterGap + dashPull + jumpPull + tension;
-      const targetY = this.groundY - this.monster.h + Math.sin(this.elapsed * 8.5) * 4;
+      const targetY = this.groundY - this.monster.h + this.monster.h * 0.15 + Math.sin(this.elapsed * 8.5) * 4;
       const chase = clamp(dt * (3.1 + tension * 0.04), 0, 1);
       this.monster.x = lerp(this.monster.x || targetX, targetX, chase);
       this.monster.y = lerp(this.monster.y || targetY, targetY, clamp(dt * 9, 0, 1));
@@ -860,6 +948,21 @@
       }
     }
 
+    makeCoinSpark(x, y) {
+      for (let i = 0; i < 8; i += 1) {
+        this.particles.push({
+          x,
+          y,
+          vx: -90 + Math.random() * 180,
+          vy: -120 + Math.random() * 90,
+          life: 0.22 + Math.random() * 0.18,
+          maxLife: 0.4,
+          color: i % 2 ? "#f2f2f2" : "#777",
+          size: 2 + Math.random() * 4,
+        });
+      }
+    }
+
     updateParticles(dt) {
       for (let index = this.particles.length - 1; index >= 0; index -= 1) {
         const particle = this.particles[index];
@@ -888,6 +991,7 @@
       this.drawRoad();
       this.drawMonster();
       for (const obstacle of this.obstacles) this.drawObstacle(obstacle);
+      for (const coin of this.coins) this.drawCoin(coin);
       this.drawPlayer();
       this.drawParticles();
       this.drawForeground();
@@ -1028,6 +1132,89 @@
       }
     }
 
+    drawCoin(coin) {
+      const video = this.coinVideo;
+      const size = coin.size;
+      const x = Math.round(coin.x);
+      const y = Math.round(coin.y + Math.sin(coin.phase) * 2);
+      const cache = this.coinFrameCache;
+
+      const drawCached = () => {
+        ctx.save();
+        ctx.globalAlpha = 0.78;
+        ctx.fillStyle = "#f2f2f2";
+        ctx.strokeStyle = "#111";
+        ctx.lineWidth = Math.max(3, size * 0.08);
+        ctx.beginPath();
+        ctx.arc(x + size / 2, y + size / 2, size * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.shadowColor = "rgba(0,0,0,.44)";
+        ctx.shadowBlur = 7;
+        ctx.drawImage(cache.canvas, x, y, size, size);
+        ctx.strokeStyle = "#f2f2f2";
+        ctx.lineWidth = Math.max(2, size * 0.05);
+        ctx.beginPath();
+        ctx.arc(x + size / 2, y + size / 2, size * 0.38, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      };
+
+      if (video?.readyState >= 2) {
+        const frameTime = video.currentTime || 0;
+        if (cache.ready && Math.abs(cache.time - frameTime) < 0.028) {
+          drawCached();
+          return;
+        }
+
+        const frameSize = 54;
+        cache.canvas.width = frameSize;
+        cache.canvas.height = frameSize;
+        const frameContext = cache.context;
+        frameContext.setTransform(1, 0, 0, 1, 0, 0);
+        frameContext.clearRect(0, 0, frameSize, frameSize);
+        frameContext.imageSmoothingEnabled = true;
+        const source = [700, 220, 390, 390];
+        frameContext.drawImage(video, source[0], source[1], source[2], source[3], 0, 0, frameSize, frameSize);
+        const frame = frameContext.getImageData(0, 0, frameSize, frameSize);
+        const data = frame.data;
+        let visiblePixels = 0;
+        for (let index = 0; index < data.length; index += 4) {
+          const red = data[index];
+          const green = data[index + 1];
+          const blue = data[index + 2];
+          const strongestNonGreen = Math.max(red, blue);
+          const greenDominance = green - strongestNonGreen;
+          if (green > 52 && greenDominance > 14 && green > red * 1.08 && green > blue * 1.08) {
+            data[index + 3] = 0;
+          } else {
+            data[index + 3] = 255;
+            visiblePixels += 1;
+          }
+        }
+        if (visiblePixels > 90) {
+          frameContext.putImageData(frame, 0, 0);
+          cache.ready = true;
+          cache.time = frameTime;
+          drawCached();
+          return;
+        }
+      }
+
+      ctx.save();
+      ctx.fillStyle = "#f2f2f2";
+      ctx.strokeStyle = "#111";
+      ctx.lineWidth = Math.max(3, size * 0.08);
+      ctx.beginPath();
+      ctx.arc(x + size / 2, y + size / 2, size * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#111";
+      ctx.fillRect(x + size * 0.46, y + size * 0.24, size * 0.1, size * 0.52);
+      ctx.restore();
+    }
+
     drawCompanion() {
       const phase = this.elapsed * (this.speed / 39);
       const scale = this.width < 560 ? 0.68 : 0.78;
@@ -1053,6 +1240,17 @@
       ctx.fill();
       ctx.translate(x, y);
       if (video?.readyState >= 2) {
+        const cache = this.monsterFrameCache;
+        const frameTime = video.currentTime || 0;
+        if (cache.ready && Math.abs(cache.time - frameTime) < 0.028) {
+          ctx.save();
+          ctx.shadowColor = "rgba(0,0,0,.32)";
+          ctx.shadowBlur = 8;
+          ctx.drawImage(cache.canvas, 0, 0, w, h);
+          ctx.restore();
+          ctx.restore();
+          return;
+        }
         const source = [560, 35, 820, 900];
         this.frameCanvas.width = Math.max(1, Math.ceil(w));
         this.frameCanvas.height = Math.max(1, Math.ceil(h));
@@ -1063,6 +1261,7 @@
         frameContext.drawImage(video, source[0], source[1], source[2], source[3], 0, 0, this.frameCanvas.width, this.frameCanvas.height);
         const frame = frameContext.getImageData(0, 0, this.frameCanvas.width, this.frameCanvas.height);
         const data = frame.data;
+        let visiblePixels = 0;
         for (let index = 0; index < data.length; index += 4) {
           const red = data[index];
           const green = data[index + 1];
@@ -1074,13 +1273,32 @@
           } else {
             if (greenDominance > 3) data[index + 1] = Math.min(green, strongestNonGreen + 3);
             data[index + 3] = 255;
+            if ((red + green + blue) / 3 < 245) visiblePixels += 1;
           }
         }
+        if (visiblePixels < this.frameCanvas.width * this.frameCanvas.height * 0.08 && cache.ready) {
+          ctx.save();
+          ctx.shadowColor = "rgba(0,0,0,.32)";
+          ctx.shadowBlur = 8;
+          ctx.drawImage(cache.canvas, 0, 0, w, h);
+          ctx.restore();
+          ctx.restore();
+          return;
+        }
         frameContext.putImageData(frame, 0, 0);
+        cache.canvas.width = this.frameCanvas.width;
+        cache.canvas.height = this.frameCanvas.height;
+        cache.width = w;
+        cache.height = h;
+        cache.time = frameTime;
+        cache.context.setTransform(1, 0, 0, 1, 0, 0);
+        cache.context.clearRect(0, 0, cache.canvas.width, cache.canvas.height);
+        cache.context.drawImage(this.frameCanvas, 0, 0);
+        cache.ready = true;
         ctx.save();
         ctx.shadowColor = "rgba(0,0,0,.32)";
         ctx.shadowBlur = 8;
-        ctx.drawImage(this.frameCanvas, 0, 0, w, h);
+        ctx.drawImage(cache.canvas, 0, 0, w, h);
         ctx.restore();
       } else {
         ctx.fillStyle = "#333";
@@ -1135,9 +1353,29 @@
       const height = config.height * mobileScale;
       const width = height * sourceAspect;
       const drawFrame = (drawX, drawY) => {
+        const cache = this.characterFrameCache[motion];
+        const frameTime = video.currentTime || 0;
+        const drawCachedFrame = (frameCache = cache) => {
+          ctx.save();
+          if (motion !== "dash") {
+            ctx.filter = "brightness(0)";
+            ctx.globalAlpha = 0.55;
+            ctx.drawImage(frameCache.canvas, drawX - 1, drawY, width, height);
+            ctx.drawImage(frameCache.canvas, drawX + 1, drawY, width, height);
+            ctx.drawImage(frameCache.canvas, drawX, drawY - 1, width, height);
+            ctx.drawImage(frameCache.canvas, drawX, drawY + 1, width, height);
+            ctx.filter = "none";
+          }
+          ctx.globalAlpha = 1;
+          ctx.drawImage(frameCache.canvas, drawX, drawY, width, height);
+          ctx.restore();
+          return true;
+        };
+        if (cache?.ready && Math.abs(cache.time - frameTime) < 0.012) {
+          return drawCachedFrame();
+        }
         this.frameCanvas.width = Math.max(1, Math.ceil(width));
         this.frameCanvas.height = Math.max(1, Math.ceil(height));
-        const cache = this.characterFrameCache[motion];
         const frameContext = this.frameContext;
         frameContext.setTransform(1, 0, 0, 1, 0, 0);
         frameContext.clearRect(0, 0, this.frameCanvas.width, this.frameCanvas.height);
@@ -1177,8 +1415,7 @@
         if (visiblePixels < Math.max(80, frameWidth * frameHeight * 0.012)) {
           const fallbackCache = cache?.ready ? cache : (motion === "run" ? null : this.characterFrameCache.run);
           if (fallbackCache?.ready) {
-            ctx.drawImage(fallbackCache.canvas, drawX, drawY, width, height);
-            return true;
+            return drawCachedFrame(fallbackCache);
           }
           return false;
         }
@@ -1188,25 +1425,13 @@
           cache.canvas.height = frameHeight;
           cache.width = width;
           cache.height = height;
+          cache.time = frameTime;
           cache.context.setTransform(1, 0, 0, 1, 0, 0);
           cache.context.clearRect(0, 0, frameWidth, frameHeight);
           cache.context.drawImage(this.frameCanvas, 0, 0);
           cache.ready = true;
         }
-        ctx.save();
-        if (motion !== "dash") {
-          ctx.filter = "brightness(0)";
-          ctx.globalAlpha = 0.55;
-          ctx.drawImage(this.frameCanvas, drawX - 1, drawY, width, height);
-          ctx.drawImage(this.frameCanvas, drawX + 1, drawY, width, height);
-          ctx.drawImage(this.frameCanvas, drawX, drawY - 1, width, height);
-          ctx.drawImage(this.frameCanvas, drawX, drawY + 1, width, height);
-          ctx.filter = "none";
-        }
-        ctx.globalAlpha = 1;
-        ctx.drawImage(this.frameCanvas, drawX, drawY, width, height);
-        ctx.restore();
-        return true;
+        return drawCachedFrame();
       };
 
       ctx.save();
