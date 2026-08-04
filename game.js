@@ -276,6 +276,8 @@
       this.monsterFrameCache = this.createFrameCache();
       this.coinFrameCache = this.createFrameCache();
       this.lastCharacterFrameCache = null;
+      this.bakedCharacterFrames = { run: [] };
+      this.bakeCharacterFrames("run", "./Run.mp4").catch(() => {});
       this.groundImage.addEventListener("load", () => {
         this.buildLandmarkCache();
         this.buildBackgroundCache();
@@ -319,6 +321,113 @@
         width: 1,
         height: 1,
       };
+    }
+
+    waitForVideoEvent(video, eventName, timeout = 3500) {
+      return new Promise((resolve) => {
+        let finished = false;
+        const done = (value) => {
+          if (finished) return;
+          finished = true;
+          video.removeEventListener(eventName, onEvent);
+          video.removeEventListener("error", onError);
+          clearTimeout(timer);
+          resolve(value);
+        };
+        const onEvent = () => done(true);
+        const onError = () => done(false);
+        const timer = setTimeout(() => done(false), timeout);
+        video.addEventListener(eventName, onEvent, { once: true });
+        video.addEventListener("error", onError, { once: true });
+      });
+    }
+
+    async seekVideo(video, time) {
+      if (!Number.isFinite(time)) return false;
+      const seeked = this.waitForVideoEvent(video, "seeked", 1800);
+      try {
+        video.currentTime = Math.max(0, time);
+      } catch {
+        return false;
+      }
+      return seeked;
+    }
+
+    getCharacterBaseConfig(motion) {
+      return {
+        run: { x: -48, y: -211, height: 222, source: [58, 6, 178, 170], highSource: [250, 35, 560, 640] },
+        jump: { x: -44, y: -240, height: 256, source: [62, 0, 145, 180], highSource: [300, 0, 700, 980] },
+        dash: { x: -64, y: -136, height: 138, source: [32, 30, 205, 148], highSource: [230, 230, 600, 390] },
+      }[motion];
+    }
+
+    extractKeyedCharacterFrame(video, motion, source, frameWidth, frameHeight) {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.ceil(frameWidth));
+      canvas.height = Math.max(1, Math.ceil(frameHeight));
+      const context = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.imageSmoothingEnabled = true;
+      context.drawImage(video, source[0], source[1], source[2], source[3], 0, 0, canvas.width, canvas.height);
+      const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+      const data = frame.data;
+      let visiblePixels = 0;
+      for (let index = 0; index < data.length; index += 4) {
+        const red = data[index];
+        const green = data[index + 1];
+        const blue = data[index + 2];
+        const value = (red + green + blue) / 3;
+        const strongestNonGreen = Math.max(red, blue);
+        const isGreenScreen =
+          green > 40 &&
+          green - strongestNonGreen > 10 &&
+          green > red * 1.04 &&
+          green > blue * 1.04;
+        if (isGreenScreen) {
+          data[index + 3] = 0;
+          continue;
+        }
+        const ink = clamp(value * 1.04, 0, 255);
+        data[index] = ink;
+        data[index + 1] = ink;
+        data[index + 2] = ink;
+        data[index + 3] = 255;
+        if (value < 248) visiblePixels += 1;
+      }
+      const minimumVisiblePixels = motion === "run"
+        ? Math.max(1450, canvas.width * canvas.height * 0.048)
+        : Math.max(760, canvas.width * canvas.height * 0.026);
+      if (visiblePixels < minimumVisiblePixels) return null;
+      context.putImageData(frame, 0, 0);
+      return canvas;
+    }
+
+    async bakeCharacterFrames(motion, sourceUrl) {
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.src = sourceUrl;
+      video.load();
+      const loaded = await this.waitForVideoEvent(video, "loadedmetadata", 5000);
+      if (!loaded || !video.videoWidth || !video.videoHeight) return;
+      const config = this.getCharacterBaseConfig(motion);
+      const source = video.videoWidth > 500 && config.highSource ? config.highSource : config.source;
+      const sourceAspect = source[2] / source[3];
+      const frameHeight = config.height;
+      const frameWidth = frameHeight * sourceAspect;
+      const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 1;
+      const frameCount = motion === "run" ? 18 : 10;
+      const frames = [];
+      for (let index = 0; index < frameCount; index += 1) {
+        const time = Math.min(Math.max(0, duration - 0.04), 0.025 + (duration * index) / frameCount);
+        const seeked = await this.seekVideo(video, time);
+        if (!seeked) continue;
+        const frame = this.extractKeyedCharacterFrame(video, motion, source, frameWidth, frameHeight);
+        if (frame) frames.push(frame);
+      }
+      if (frames.length >= 6) this.bakedCharacterFrames[motion] = frames;
     }
 
     playCharacterVideo(name, restart = false) {
@@ -1369,6 +1478,10 @@
       const video = this.characterVideos[motion];
       ctx.save();
       ctx.translate(this.player.x, this.groundY + jumpLift);
+      if (motion === "run" && this.drawBakedCharacter("run")) {
+        ctx.restore();
+        return;
+      }
       const fallbackVideo = this.characterVideos.run;
       if (motion === "dash") {
         const drewDashVideo = video?.readyState >= 2 ? this.drawVideoCharacter(video, "dash") : false;
@@ -1379,13 +1492,36 @@
       ctx.restore();
     }
 
+    drawBakedCharacter(motion) {
+      const frames = this.bakedCharacterFrames?.[motion];
+      if (!frames?.length) return false;
+      const mobileScale = this.width < 560 ? 0.9 : 1;
+      const config = this.getCharacterBaseConfig(motion);
+      const frameIndex = Math.floor(this.elapsed * (motion === "run" ? 15 : 10)) % frames.length;
+      const frame = frames[frameIndex];
+      const height = config.height * mobileScale;
+      const width = height * (frame.width / frame.height);
+      const x = config.x * mobileScale;
+      const y = config.y * mobileScale;
+      ctx.save();
+      if (motion !== "dash") {
+        ctx.filter = "brightness(0)";
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(frame, x - 1, y, width, height);
+        ctx.drawImage(frame, x + 1, y, width, height);
+        ctx.drawImage(frame, x, y - 1, width, height);
+        ctx.drawImage(frame, x, y + 1, width, height);
+        ctx.filter = "none";
+      }
+      ctx.globalAlpha = 1;
+      ctx.drawImage(frame, x, y, width, height);
+      ctx.restore();
+      return true;
+    }
+
     drawVideoCharacter(video, motion) {
       const mobileScale = this.width < 560 ? 0.9 : 1;
-      const config = {
-        run: { x: -48, y: -211, height: 222, source: [58, 6, 178, 170], highSource: [250, 35, 560, 640] },
-        jump: { x: -44, y: -240, height: 256, source: [62, 0, 145, 180], highSource: [300, 0, 700, 980] },
-        dash: { x: -64, y: -136, height: 138, source: [32, 30, 205, 148], highSource: [230, 230, 600, 390] },
-      }[motion];
+      const config = this.getCharacterBaseConfig(motion);
       const source = video.videoWidth > 500 && config.highSource ? config.highSource : config.source;
       const sourceAspect = source ? source[2] / source[3] : (video.videoWidth || 1) / (video.videoHeight || 1);
       const x = config.x * mobileScale;
