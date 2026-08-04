@@ -1047,7 +1047,6 @@
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
       this.drawBackground();
-      this.drawKaiju();
       this.drawRoad();
       this.drawMonster();
       for (const obstacle of this.obstacles) this.drawObstacle(obstacle);
@@ -1413,7 +1412,7 @@
           ctx.restore();
           return true;
         };
-        if (cache?.ready && (Math.abs(cache.time - frameTime) < 0.022 || (frameTime > cache.time && frameTime - cache.time < 0.026))) {
+        if (cache?.ready && (Math.abs(cache.time - frameTime) < 0.042 || (frameTime > cache.time && frameTime - cache.time < 0.052))) {
           return drawCachedFrame();
         }
         const processScale = motion === "run" ? 0.86 : 0.92;
@@ -1455,7 +1454,10 @@
             data[index + 3] = 0;
           }
         }
-        if (visiblePixels < Math.max(80, frameWidth * frameHeight * 0.012)) {
+        const minimumVisiblePixels = motion === "run"
+          ? Math.max(1200, frameWidth * frameHeight * 0.04)
+          : Math.max(760, frameWidth * frameHeight * 0.026);
+        if (visiblePixels < minimumVisiblePixels) {
           const fallbackCache = cache?.ready
             ? cache
             : (this.lastCharacterFrameCache?.ready ? this.lastCharacterFrameCache : (motion === "run" ? null : this.characterFrameCache.run));
