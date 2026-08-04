@@ -181,7 +181,7 @@
       this.speed = 305;
       this.scroll = 0;
       this.spawnTimer = 1.35;
-      this.coinSpawnTimer = 0.95;
+      this.coinSpawnTimer = 1.4;
       this.coinCount = 0;
       this.locationIndex = 0;
       this.slideHeld = false;
@@ -557,7 +557,7 @@
       this.speed = 305;
       this.scroll = 0;
       this.spawnTimer = 1.55;
-      this.coinSpawnTimer = 0.85;
+      this.coinSpawnTimer = 1.15;
       this.coinCount = 0;
       this.obstacles.length = 0;
       this.coins.length = 0;
@@ -713,32 +713,32 @@
     }
 
     spawnCoinCluster(forcedLane) {
-      if (this.coins.length > 14) return;
+      if (this.coins.length > 5) return;
       const mobileScale = this.width < 560 ? 0.86 : 1;
       const size = (this.width < 560 ? 42 : 48) * mobileScale;
       const lanes = [
-        this.groundY - this.player.h * 0.62,
         this.groundY - this.player.h * 1.02,
-        this.groundY - this.player.h * 1.36,
+        this.groundY - this.player.h * 1.22,
       ];
-      const laneIndex = typeof forcedLane === "number" ? forcedLane : Math.floor(Math.random() * lanes.length);
-      const count = laneIndex === 2 ? 3 : 4;
-      const spacing = 108 * mobileScale;
+      const laneIndex = typeof forcedLane === "number" ? clamp(forcedLane, 0, lanes.length - 1) : 0;
+      const count = 1;
+      const spacing = 260 * mobileScale;
       const clusterWidth = size + (count - 1) * spacing;
-      let startX = this.width + 120;
+      let startX = this.width + 260;
       for (const obstacle of this.obstacles) {
-        const clearLeft = startX - 70;
-        const clearRight = startX + clusterWidth + 90;
+        const clearLeft = startX - 120;
+        const clearRight = startX + clusterWidth + 180;
         const obstacleLeft = obstacle.x;
         const obstacleRight = obstacle.x + obstacle.w;
         const overlaps = obstacleRight > clearLeft && obstacleLeft < clearRight;
-        if (overlaps) startX = obstacleRight + 150 * mobileScale;
+        if (overlaps) startX = obstacleRight + 280 * mobileScale;
       }
-      const arc = laneIndex === 1 ? 11 : laneIndex === 2 ? 16 : 6;
+      const arc = 0;
       for (let index = 0; index < count; index += 1) {
         const centerY = lanes[laneIndex] - Math.sin((index / Math.max(1, count - 1)) * Math.PI) * arc;
         this.coins.push({
           x: startX + index * spacing,
+          previousX: startX + index * spacing,
           y: centerY - size / 2,
           size,
           phase: Math.random() * Math.PI * 2,
@@ -803,7 +803,7 @@
       this.coinSpawnTimer -= dt;
       if (this.coinSpawnTimer <= 0) {
         this.spawnCoinCluster();
-        const coinGap = 390 + Math.random() * 330;
+        const coinGap = 1020 + Math.random() * 720;
         this.coinSpawnTimer = coinGap / this.speed;
       }
 
@@ -816,6 +816,7 @@
       }
 
       for (const coin of this.coins) {
+        coin.previousX = coin.x;
         coin.x -= worldSpeed * dt;
         coin.phase += dt * 5.8;
       }
@@ -889,18 +890,23 @@
           this.coins.splice(index, 1);
           continue;
         }
-        const inset = coin.size * 0.1;
+        const inset = -coin.size * 0.08;
         const coinBox = {
           x: coin.x + inset,
           y: coin.y + inset,
           w: coin.size - inset * 2,
           h: coin.size - inset * 2,
         };
+        const sweptLeft = Math.min(coin.previousX ?? coin.x, coin.x) + inset;
+        const sweptRight = Math.max(coin.previousX ?? coin.x, coin.x) + coin.size - inset;
+        const sweptHorizontal = playerBox.x < sweptRight && playerBox.x + playerBox.w > sweptLeft;
+        const sweptVertical = playerBox.y < coinBox.y + coinBox.h && playerBox.y + playerBox.h > coinBox.y;
         const collected =
-          playerBox.x < coinBox.x + coinBox.w &&
-          playerBox.x + playerBox.w > coinBox.x &&
-          playerBox.y < coinBox.y + coinBox.h &&
-          playerBox.y + playerBox.h > coinBox.y;
+          (playerBox.x < coinBox.x + coinBox.w &&
+            playerBox.x + playerBox.w > coinBox.x &&
+            playerBox.y < coinBox.y + coinBox.h &&
+            playerBox.y + playerBox.h > coinBox.y) ||
+          (sweptHorizontal && sweptVertical);
         if (!collected) continue;
         this.coins.splice(index, 1);
         this.coinCount += 1;
@@ -1265,7 +1271,8 @@
       ctx.translate(x, y);
       if (video?.readyState >= 2) {
         const cache = this.monsterFrameCache;
-        if (cache.ready) {
+        const frameTime = video.currentTime || 0;
+        if (cache.ready && Math.abs(cache.time - frameTime) < 0.028) {
           ctx.save();
           ctx.shadowColor = "rgba(0,0,0,.32)";
           ctx.shadowBlur = 8;
@@ -1274,7 +1281,6 @@
           ctx.restore();
           return;
         }
-        const frameTime = video.currentTime || 0;
         const source = [560, 35, 820, 900];
         this.frameCanvas.width = Math.max(1, Math.ceil(w));
         this.frameCanvas.height = Math.max(1, Math.ceil(h));
@@ -1301,6 +1307,15 @@
           }
         }
         if (visiblePixels < this.frameCanvas.width * this.frameCanvas.height * 0.08) {
+          if (cache.ready) {
+            ctx.save();
+            ctx.shadowColor = "rgba(0,0,0,.32)";
+            ctx.shadowBlur = 8;
+            ctx.drawImage(cache.canvas, 0, 0, w, h);
+            ctx.restore();
+            ctx.restore();
+            return;
+          }
           ctx.fillStyle = "#333";
           ctx.strokeStyle = "#111";
           ctx.lineWidth = 4;
