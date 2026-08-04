@@ -189,7 +189,7 @@
       this.elapsed = 0;
       this.distance = 0;
       this.best = Number(localStorage.getItem("addis-runner-best") || 0);
-      this.speed = 305;
+      this.speed = 325;
       this.scroll = 0;
       this.spawnTimer = 1.35;
       this.coinSpawnTimer = 1.4;
@@ -675,7 +675,7 @@
     start() {
       this.state = "running";
       this.distance = 0;
-      this.speed = 305;
+      this.speed = 325;
       this.scroll = 0;
       this.spawnTimer = 1.55;
       this.coinSpawnTimer = 1.15;
@@ -889,7 +889,7 @@
       this.updateParticles(dt);
       if (this.state !== "running") return;
 
-      this.speed = Math.min(535, 305 + this.distance * 0.105);
+      this.speed = Math.min(560, 325 + this.distance * 0.112);
       const dashBoost = this.player.dashTime > 0 ? 70 : 0;
       const jumpCarryBoost = this.player.grounded ? 0 : Math.min(165, this.speed * 0.46);
       const worldSpeed = this.speed + dashBoost + jumpCarryBoost;
@@ -1497,7 +1497,7 @@
       if (!frames?.length) return false;
       const mobileScale = this.width < 560 ? 0.9 : 1;
       const config = this.getCharacterBaseConfig(motion);
-      const frameIndex = Math.floor(this.elapsed * (motion === "run" ? 15 : 10)) % frames.length;
+      const frameIndex = Math.floor(this.elapsed * (motion === "run" ? 23 : 10)) % frames.length;
       const frame = frames[frameIndex];
       const height = config.height * mobileScale;
       const width = height * (frame.width / frame.height);
