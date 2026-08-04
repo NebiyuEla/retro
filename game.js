@@ -37,28 +37,28 @@
   const dialogue = [
     {
       speaker: "girl",
-      name: "Kobi",
+      name: "Tiki",
       role: "CITY RUNNER // 01",
       am: "ዛሬ አንድ ካይጁ የአዲስ አበባን ታሪካዊ ቦታዎች ሊያጠፋ መጥቷል።",
       en: "A Kaiju has come to destroy the historic landmarks of Addis Ababa.",
     },
     {
       speaker: "boy",
-      name: "Thomas",
+      name: "Yomif",
       role: "SCOUT // 02",
-      am: "ገንዘቤ፣ ከተማዋን እንዴት እናድናት?",
-      en: "Kobi, what should we do? The streets are already blocked.",
+      am: "Kobi፣ ከተማዋን እንዴት እናድናት?",
+      en: "Tiki, what should we do? The streets are already blocked.",
     },
     {
       speaker: "girl",
-      name: "Kobi",
+      name: "Tiki",
       role: "CITY RUNNER // 01",
       am: "እንሮጣለን፣ እንዘላለን፣ ሁሉንም መሰናክል እናልፋለን!",
       en: "We run, we jump, and we overcome every obstacle in our way.",
     },
     {
       speaker: "girl",
-      name: "Kobi",
+      name: "Tiki",
       role: "CITY RUNNER // 01",
       am: "አዲስ አበባን አብረን እናድን። ዝግጁ ነህ?",
       en: "Let's save Addis Ababa together. Stay close—and don't stop running.",
@@ -82,6 +82,11 @@
     constructor() {
       this.context = null;
       this.muted = false;
+      this.music = new Audio("./fighttotheend-3.mp3");
+      this.music.loop = true;
+      this.music.preload = "auto";
+      this.music.volume = 0.28;
+      this.music.setAttribute("aria-hidden", "true");
     }
 
     ensure() {
@@ -93,6 +98,17 @@
       }
       if (this.context.state === "suspended") this.context.resume();
       return this.context;
+    }
+
+    playMusic() {
+      if (this.muted) return;
+      this.music.volume = 0.28;
+      const playback = this.music.play();
+      if (playback?.catch) playback.catch(() => {});
+    }
+
+    pauseMusic() {
+      this.music.pause();
     }
 
     tone(frequency, duration = 0.08, type = "square", gain = 0.035, slide = 0) {
@@ -120,6 +136,7 @@
     }
 
     start() {
+      this.playMusic();
       this.tone(330, 0.08, "square", 0.04, 120);
       setTimeout(() => this.tone(520, 0.1, "square", 0.035, 160), 100);
     }
@@ -134,7 +151,12 @@
 
     toggle() {
       this.muted = !this.muted;
-      if (!this.muted) this.tick();
+      if (this.muted) {
+        this.pauseMusic();
+      } else {
+        this.playMusic();
+        this.tick();
+      }
       return this.muted;
     }
   }
@@ -225,6 +247,11 @@
       this.frameCanvas.width = 1;
       this.frameCanvas.height = 1;
       this.frameContext = this.frameCanvas.getContext("2d", { willReadFrequently: true });
+      this.characterFrameCache = {
+        run: this.createFrameCache(),
+        jump: this.createFrameCache(),
+        dash: this.createFrameCache(),
+      };
       this.groundImage.addEventListener("load", () => {
         this.buildLandmarkCache();
         this.buildBackgroundCache();
@@ -254,6 +281,19 @@
       }
       video.load();
       return video;
+    }
+
+    createFrameCache() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1;
+      canvas.height = 1;
+      return {
+        canvas,
+        context: canvas.getContext("2d", { alpha: true }),
+        ready: false,
+        width: 1,
+        height: 1,
+      };
     }
 
     playCharacterVideo(name, restart = false) {
@@ -386,7 +426,7 @@
       this.player.w = this.width < 560 ? 88 : 104;
       this.player.h = this.width < 560 ? 96 : 112;
       this.player.x = this.width * (this.width < 680 ? 0.27 : 0.22);
-      this.monster.h = this.width < 560 ? 132 : 172;
+      this.monster.h = this.width < 560 ? 158 : 210;
       this.monster.w = this.monster.h * (820 / 900);
       if (this.player.grounded || this.state !== "running") this.player.y = this.groundY - this.player.h;
       if (this.state !== "running") {
@@ -555,7 +595,12 @@
       const shouldPause = typeof force === "boolean" ? force : this.state === "running";
       this.state = shouldPause ? "paused" : "running";
       ui.pause.classList.toggle("is-visible", shouldPause);
-      if (!shouldPause) this.lastTime = performance.now();
+      if (shouldPause) {
+        sound.pauseMusic();
+      } else {
+        this.lastTime = performance.now();
+        sound.playMusic();
+      }
     }
 
     gameOver() {
@@ -565,6 +610,7 @@
         video.pause();
       }
       this.monsterVideo.pause();
+      sound.pauseMusic();
       sound.crash();
       this.best = Math.max(this.best, Math.floor(this.distance));
       localStorage.setItem("addis-runner-best", String(this.best));
@@ -593,11 +639,11 @@
       const requestedType = forcedType === "spike" ? "tower" : forcedType;
       const type = requestedType || pool[Math.floor(Math.random() * pool.length)];
       const config = {
-        car: { h: 76, source: [247, 361, 1275, 546], breakable: false, image: true, inset: 12, collisionTop: 8, collisionBottom: 6 },
-        truck: { h: 82, source: [256, 401, 1340, 567], breakable: false, image: true, inset: 14, collisionTop: 8, collisionBottom: 6 },
-        bus: { h: 90, source: [233, 352, 1396, 451], breakable: false, image: true, inset: 16, collisionTop: 7, collisionBottom: 6 },
-        tower: { h: 142, source: [346, 21, 1051, 1038], breakable: false, image: true, inset: 18, collisionTop: 4, collisionBottom: 5 },
-        plane: { h: 82, source: [128, 140, 1578, 464], breakable: false, overhead: true, image: true, inset: 18 },
+        car: { h: 70, source: [247, 361, 1275, 546], breakable: false, image: true, inset: 12, collisionTop: 8, collisionBottom: 6 },
+        truck: { h: 76, source: [256, 401, 1340, 567], breakable: false, image: true, inset: 14, collisionTop: 8, collisionBottom: 6 },
+        bus: { h: 82, source: [233, 352, 1396, 451], breakable: false, image: true, inset: 16, collisionTop: 7, collisionBottom: 6 },
+        tower: { h: 130, source: [346, 21, 1051, 1038], breakable: false, image: true, inset: 18, collisionTop: 4, collisionBottom: 5 },
+        plane: { h: 64, source: [128, 140, 1578, 464], breakable: false, overhead: true, image: true, inset: 18 },
         rubble: { w: 88, h: 50, breakable: false },
         barrier: { w: 82, h: 74, breakable: false },
         blockade: { w: 96, h: 72, breakable: false },
@@ -611,7 +657,7 @@
       this.obstacles.push({
         type,
         x: this.width + 70,
-        y: config.overhead ? this.groundY - this.player.h * 1.38 : this.groundY - height,
+        y: config.overhead ? this.groundY - this.player.h * 1.84 : this.groundY - height,
         w: width,
         h: height,
         breakable: config.breakable,
@@ -1091,6 +1137,7 @@
       const drawFrame = (drawX, drawY) => {
         this.frameCanvas.width = Math.max(1, Math.ceil(width));
         this.frameCanvas.height = Math.max(1, Math.ceil(height));
+        const cache = this.characterFrameCache[motion];
         const frameContext = this.frameContext;
         frameContext.setTransform(1, 0, 0, 1, 0, 0);
         frameContext.clearRect(0, 0, this.frameCanvas.width, this.frameCanvas.height);
@@ -1127,8 +1174,25 @@
             data[index + 3] = 0;
           }
         }
-        if (visiblePixels < Math.max(80, frameWidth * frameHeight * 0.012)) return false;
+        if (visiblePixels < Math.max(80, frameWidth * frameHeight * 0.012)) {
+          const fallbackCache = cache?.ready ? cache : (motion === "run" ? null : this.characterFrameCache.run);
+          if (fallbackCache?.ready) {
+            ctx.drawImage(fallbackCache.canvas, drawX, drawY, width, height);
+            return true;
+          }
+          return false;
+        }
         frameContext.putImageData(frame, 0, 0);
+        if (cache) {
+          cache.canvas.width = frameWidth;
+          cache.canvas.height = frameHeight;
+          cache.width = width;
+          cache.height = height;
+          cache.context.setTransform(1, 0, 0, 1, 0, 0);
+          cache.context.clearRect(0, 0, frameWidth, frameHeight);
+          cache.context.drawImage(this.frameCanvas, 0, 0);
+          cache.ready = true;
+        }
         ctx.save();
         if (motion !== "dash") {
           ctx.filter = "brightness(0)";
@@ -1574,6 +1638,7 @@
       ctx.shadowColor = "rgba(0,0,0,.24)";
       ctx.shadowBlur = 8;
       ctx.shadowOffsetY = 3;
+      ctx.filter = "grayscale(1) contrast(1.12) brightness(0.96)";
       if (obstacle.source) {
         ctx.drawImage(image, obstacle.source[0], obstacle.source[1], obstacle.source[2], obstacle.source[3], 0, 0, w, h);
       } else {
