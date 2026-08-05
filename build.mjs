@@ -4,6 +4,7 @@ const files = [
   "index.html",
   "styles.css",
   "game.js",
+  "run-sprite.png",
   "Run.mp4",
   "Jump.mp4",
   "Dash.mp4",

@@ -237,6 +237,11 @@
       this.characterImages.girl.src = "./girl.png";
       this.characterImages.boy.src = "./boy.png";
       this.dashFrameImage.src = "./dash-frame.png";
+      this.runSpriteImage = new Image();
+      this.runSpriteImage.src = "./run-sprite.png";
+      this.runSpriteFrameCount = 24;
+      this.runSpriteFrameWidth = 194;
+      this.runSpriteFrameHeight = 222;
       this.characterVideos = {
         run: this.createCharacterVideo("./Run.mp4", true),
         jump: this.createCharacterVideo("./Jump.mp4", false),
@@ -277,7 +282,6 @@
       this.coinFrameCache = this.createFrameCache();
       this.lastCharacterFrameCache = null;
       this.bakedCharacterFrames = { run: [] };
-      this.bakeCharacterFrames("run", "./Run.mp4").catch(() => {});
       this.groundImage.addEventListener("load", () => {
         this.buildLandmarkCache();
         this.buildBackgroundCache();
@@ -1478,6 +1482,10 @@
       const video = this.characterVideos[motion];
       ctx.save();
       ctx.translate(this.player.x, this.groundY + jumpLift);
+      if (motion === "run" && this.drawRunSprite()) {
+        ctx.restore();
+        return;
+      }
       if (motion === "run" && this.drawBakedCharacter("run")) {
         ctx.restore();
         return;
@@ -1490,6 +1498,34 @@
         this.drawVideoCharacter(video?.readyState >= 2 ? video : fallbackVideo, video?.readyState >= 2 ? motion : "run");
       }
       ctx.restore();
+    }
+
+    drawRunSprite() {
+      const image = this.runSpriteImage;
+      if (!image?.complete || image.naturalWidth <= 0) return false;
+      const mobileScale = this.width < 560 ? 0.9 : 1;
+      const config = this.getCharacterBaseConfig("run");
+      const frameRate = clamp(this.speed / 7, 46, 64);
+      const frameIndex = Math.floor(this.elapsed * frameRate) % this.runSpriteFrameCount;
+      const frameWidth = this.runSpriteFrameWidth;
+      const frameHeight = this.runSpriteFrameHeight;
+      const height = config.height * mobileScale;
+      const width = height * (frameWidth / frameHeight);
+      const x = config.x * mobileScale;
+      const y = config.y * mobileScale;
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.filter = "brightness(0)";
+      ctx.globalAlpha = 0.55;
+      ctx.drawImage(image, frameIndex * frameWidth, 0, frameWidth, frameHeight, x - 1, y, width, height);
+      ctx.drawImage(image, frameIndex * frameWidth, 0, frameWidth, frameHeight, x + 1, y, width, height);
+      ctx.drawImage(image, frameIndex * frameWidth, 0, frameWidth, frameHeight, x, y - 1, width, height);
+      ctx.drawImage(image, frameIndex * frameWidth, 0, frameWidth, frameHeight, x, y + 1, width, height);
+      ctx.filter = "none";
+      ctx.globalAlpha = 1;
+      ctx.drawImage(image, frameIndex * frameWidth, 0, frameWidth, frameHeight, x, y, width, height);
+      ctx.restore();
+      return true;
     }
 
     drawBakedCharacter(motion) {
